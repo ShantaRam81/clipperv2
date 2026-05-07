@@ -1,0 +1,15 @@
+{
+  "name": "reference-clipper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local reference clipper for saving named short video fragments from source links.",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "check": "node --check server.js && node --check src/server/app.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

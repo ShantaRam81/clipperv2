@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Reference Clipper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>Reference Clipper</h1>
+            <p>Короткие видеофрагменты из Behance, Vimeo, YouTube и других страниц.</p>
+          </div>
+          <div id="status" class="status">Проверка</div>
+        </header>
+
+        <form id="clipForm" class="panel">
+          <label class="field full">
+            <span>Ссылка</span>
+            <input id="url" type="url" placeholder="Вставьте ссылку на Behance, Vimeo или YouTube" required>
+          </label>
+
+          <div id="sourcePreview" class="source-preview" hidden>
+            <img id="thumbnail" alt="">
+            <div>
+              <strong id="sourceTitle">Источник</strong>
+              <span id="sourceMeta">00:30</span>
+            </div>
+          </div>
+
+          <div id="videoOptions" class="video-options" hidden></div>
+
+          <section class="timeline-block" aria-label="Выбор фрагмента">
+            <div class="timeline-head">
+              <span>Фрагмент</span>
+              <strong id="rangeLabel">00:00.0 - 00:05.0</strong>
+            </div>
+
+            <div class="segment-preview">
+              <div id="timeBubble" class="time-bubble">00:00.0</div>
+              <button type="button" class="play-preview" aria-label="Предпросмотр фрагмента"></button>
+              <div id="filmstrip" class="filmstrip">
+                <div id="filmFrames" class="film-frames" aria-hidden="true"></div>
+                <div id="previewSelectedRange" class="preview-selected-range">
+                  <span class="range-handle left" data-edge="start"></span>
+                  <span class="range-handle right" data-edge="end"></span>
+                </div>
+              </div>
+            </div>
+
+            <video id="previewVideo" class="preview-video" playsinline muted controls hidden></video>
+
+            <div class="range-wrap" hidden>
+              <div id="selectedRange" class="selected-range"></div>
+              <input id="startRange" type="range" min="0" max="30" value="0" step="0.1">
+              <input id="endRange" type="range" min="0" max="30" value="5" step="0.1">
+            </div>
+
+            <div class="time-inputs">
+              <label class="field">
+                <span>Начало</span>
+                <input id="start" type="text" value="00:00.0">
+              </label>
+              <label class="field">
+                <span>Конец</span>
+                <input id="end" type="text" value="00:05.0">
+              </label>
+              <label class="field">
+                <span>Длина</span>
+                <input id="duration" type="text" value="5.0 сек" readonly>
+              </label>
+            </div>
+          </section>
+
+          <label class="field full">
+            <span>Название фрагмента</span>
+            <input id="title" type="text" placeholder="Например: kinetic typography / logo reveal" required>
+          </label>
+
+          <div class="save-row">
+            <label class="field">
+              <span>Качество</span>
+              <select id="quality">
+                <option value="720">720p, оптимально</option>
+                <option value="480">480p, быстрее</option>
+                <option value="1080">1080p</option>
+                <option value="source">Исходное</option>
+              </select>
+            </label>
+            <button type="submit" id="saveBtn">Сохранить фрагмент</button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="library">
+        <header>
+          <h2>Библиотека</h2>
+          <button type="button" id="refreshBtn">Обновить</button>
+        </header>
+        <div id="message" class="message"></div>
+        <div id="clips" class="clips"></div>
+      </aside>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
