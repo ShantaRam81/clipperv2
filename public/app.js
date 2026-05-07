@@ -27,6 +27,7 @@ const previewVideoEl = document.querySelector("#previewVideo");
 
 let sourceDuration = 30;
 let selectedSourceUrl = "";
+let selectedPreviewUrl = "";
 let probeTimer = 0;
 let probeToken = 0;
 let activeDrag = null;
@@ -50,11 +51,12 @@ function bindEvents() {
   window.addEventListener("pointerup", stopTimelineDrag);
   previewVideoEl.addEventListener("timeupdate", stopPreviewAtEnd);
   previewVideoEl.addEventListener("error", () => {
-    setMessage("Не удалось открыть предпросмотр этого источника. Попробуйте другой ролик или сохраните фрагмент.");
+    setMessage("Не удалось открыть предпросмотр. Для некоторых Vimeo/YouTube ссылок временный поток может быть заблокирован браузером.");
   });
   urlInput.addEventListener("input", () => {
     probeToken += 1;
     selectedSourceUrl = "";
+    selectedPreviewUrl = "";
     videoOptionsEl.hidden = true;
     previewEl.hidden = true;
     scheduleProbe();
@@ -80,16 +82,6 @@ function scheduleProbe() {
   probeTimer = setTimeout(() => probeSource(), 650);
 }
 
-async function chooseOutputFolder() {
-  setMessage("Открываю выбор папки...");
-  const data = await fetchJson("/api/select-folder", { method: "POST" });
-  if (!data.selected) {
-    setMessage("Сохранение отменено: папка не выбрана.");
-    return "";
-  }
-  return data.path;
-}
-
 async function loadHealth() {
   const health = await fetchJson("/api/health");
   const missing = Object.entries(health.dependencies)
@@ -99,8 +91,11 @@ async function loadHealth() {
   if (missing.length) {
     statusEl.textContent = `Нет ${missing.join(", ")}`;
     statusEl.className = "status warning";
+  } else if (health.processing?.mode === "remote") {
+    statusEl.textContent = "Облачная обработка";
+    statusEl.className = "status ready";
   } else {
-    statusEl.textContent = "Готов к экспорту";
+    statusEl.textContent = "Локальный режим";
     statusEl.className = "status ready";
   }
 }
@@ -126,9 +121,6 @@ async function probeSource() {
 async function saveClip(event) {
   event.preventDefault();
   try {
-    const outputDir = await chooseOutputFolder();
-    if (!outputDir) return;
-
     setMessage("Готовлю фрагмент...");
     const clip = await fetchJson("/api/clips", {
       method: "POST",
@@ -138,16 +130,10 @@ async function saveClip(event) {
         title: titleInput.value,
         start: startInput.value,
         end: endInput.value,
-        target: "local",
-        outputDir,
         quality: qualityInput.value
       })
     });
-    if (clip.copiedTo) {
-      setMessage(`Сохранено в папку: ${clip.copiedTo}`);
-    } else {
-      setMessage(`Сохранено в папку сервиса: ${clip.file}`);
-    }
+    setMessage(`Сохранено: ${clip.outputName || clip.href}`);
     await loadLibrary();
   } catch (error) {
     setMessage(error.message);
@@ -190,6 +176,7 @@ function renderVideoOptions(options) {
 
 function applySource(data) {
   selectedSourceUrl = data.url || urlInput.value;
+  selectedPreviewUrl = data.previewUrl || directVideoUrl(selectedSourceUrl);
   sourceDuration = Math.max(1, Number(data.duration || 30));
   startRange.max = sourceDuration;
   endRange.max = sourceDuration;
@@ -199,10 +186,9 @@ function applySource(data) {
   sourceTitleEl.textContent = data.title || data.provider || "Источник";
   sourceMetaEl.textContent = `${data.provider} · ${formatTime(sourceDuration)}`;
   thumbnailEl.src = data.thumbnail || inlinePlaceholder();
-  filmstripEl.style.setProperty("--thumb", `url("${data.thumbnail || inlinePlaceholder()}")`);
   renderFilmFrames(data.thumbnail || inlinePlaceholder());
-  currentFilmstripUrl = selectedSourceUrl;
-  buildVideoFilmstrip(selectedSourceUrl).catch(() => {});
+  currentFilmstripUrl = selectedPreviewUrl;
+  if (selectedPreviewUrl) buildVideoFilmstrip(selectedPreviewUrl).catch(() => {});
   resetPreviewVideo();
   previewEl.hidden = false;
   syncRange("range");
@@ -210,7 +196,7 @@ function applySource(data) {
 
 function renderFilmFrames(thumbnail) {
   filmFramesEl.innerHTML = "";
-  const count = 7;
+  const count = 9;
   for (let index = 0; index < count; index += 1) {
     const frame = document.createElement("span");
     frame.className = "film-frame";
@@ -221,7 +207,7 @@ function renderFilmFrames(thumbnail) {
 }
 
 async function buildVideoFilmstrip(url) {
-  if (!url || !/^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(url)) return;
+  if (!directVideoUrl(url)) return;
 
   const video = document.createElement("video");
   video.crossOrigin = "anonymous";
@@ -238,11 +224,11 @@ async function buildVideoFilmstrip(url) {
   const context = canvas.getContext("2d");
   const frames = [];
 
-  for (let index = 0; index < 7; index += 1) {
-    video.currentTime = clamp(Math.min(duration - 0.05, (duration * (index + 0.5)) / 7), 0, duration);
+  for (let index = 0; index < 9; index += 1) {
+    video.currentTime = clamp(Math.min(duration - 0.05, (duration * (index + 0.5)) / 9), 0, duration);
     await waitForVideoEvent(video, "seeked", 4000);
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    frames.push(canvas.toDataURL("image/jpeg", 0.76));
+    frames.push(canvas.toDataURL("image/jpeg", 0.7));
   }
 
   if (currentFilmstripUrl !== url) return;
@@ -421,10 +407,13 @@ async function playSelectedPreview() {
     return;
   }
 
+  const previewUrl = await getPreviewSource();
+  if (!previewUrl) return;
+
   const start = Number(startRange.value);
   previewVideoEl.hidden = false;
-  if (previewVideoEl.src !== selectedSourceUrl) {
-    previewVideoEl.src = selectedSourceUrl;
+  if (previewVideoEl.src !== previewUrl) {
+    previewVideoEl.src = previewUrl;
   }
   previewVideoEl.currentTime = start;
 
@@ -432,7 +421,24 @@ async function playSelectedPreview() {
     await previewVideoEl.play();
     setMessage(`Предпросмотр: ${startInput.value} - ${endInput.value}`);
   } catch {
-    setMessage("Не удалось запустить предпросмотр. Для Vimeo/YouTube он появится после получения прямого видео.");
+    setMessage("Не удалось запустить предпросмотр. Попробуйте сохранить фрагмент или обновить временную ссылку.");
+  }
+}
+
+async function getPreviewSource() {
+  if (selectedPreviewUrl) return selectedPreviewUrl;
+
+  setMessage("Получаю временный поток для предпросмотра...");
+  try {
+    const data = await fetchJson("/api/preview", {
+      method: "POST",
+      body: JSON.stringify({ url: selectedSourceUrl })
+    });
+    selectedPreviewUrl = data.previewUrl || "";
+    return selectedPreviewUrl;
+  } catch (error) {
+    setMessage(error.message);
+    return "";
   }
 }
 
@@ -447,6 +453,10 @@ function resetPreviewVideo() {
   previewVideoEl.removeAttribute("src");
   previewVideoEl.load();
   previewVideoEl.hidden = true;
+}
+
+function directVideoUrl(url) {
+  return /^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(url) ? url : "";
 }
 
 function parseTime(value) {
@@ -480,5 +490,5 @@ async function fetchJson(url, options = {}) {
 }
 
 function inlinePlaceholder() {
-  return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 90'%3E%3Crect width='160' height='90' fill='%23dde2ea'/%3E%3Cpath d='M68 30l30 15-30 15z' fill='%230f766e'/%3E%3C/svg%3E";
+  return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 90'%3E%3Crect width='160' height='90' fill='%2318191c'/%3E%3Cpath d='M68 30l30 15-30 15z' fill='%238b8d96'/%3E%3C/svg%3E";
 }

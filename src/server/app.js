@@ -1,5 +1,5 @@
-import { createServer } from "node:http";
-import { copyFile, mkdir, readFile, readdir, rm, unlink, writeFile, stat } from "node:fs/promises";
+﻿import { createServer } from "node:http";
+import { mkdir, readFile, readdir, rm, unlink, writeFile, stat } from "node:fs/promises";
 import { createReadStream, existsSync, readdirSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -12,6 +12,10 @@ const clipsDir = join(storageDir, "clips");
 const tempDir = join(storageDir, "tmp");
 const libraryPath = join(storageDir, "library.json");
 const port = Number(process.env.PORT || 3000);
+const maxLocalClips = Number(process.env.MAX_LOCAL_CLIPS || 100);
+const clipTtlHours = Number(process.env.CLIP_TTL_HOURS || 0);
+const remoteProcessorUrl = process.env.CLIPPER_PROCESSOR_URL || "";
+const remoteProcessorToken = process.env.CLIPPER_PROCESSOR_TOKEN || "";
 const commandPaths = {
   "ffmpeg": process.env.FFMPEG_PATH,
   "yt-dlp": process.env.YTDLP_PATH
@@ -50,8 +54,9 @@ export async function startServer(options = {}) {
       return sendJson(res, await probeSource(body.url));
     }
 
-    if (req.method === "POST" && url.pathname === "/api/select-folder") {
-      return sendJson(res, await selectOutputFolder());
+    if (req.method === "POST" && url.pathname === "/api/preview") {
+      const body = await readJson(req);
+      return sendJson(res, await createPreview(body.url));
     }
 
     if (req.method === "POST" && url.pathname === "/api/clips") {
@@ -134,6 +139,11 @@ async function getHealth() {
   const [ffmpeg, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("yt-dlp")]);
   return {
     ok: true,
+    processing: {
+      mode: remoteProcessorUrl ? "remote" : "local",
+      maxLocalClips,
+      clipTtlHours
+    },
     dependencies: {
       node: process.version,
       ffmpeg,
@@ -142,67 +152,6 @@ async function getHealth() {
     storage: {
       clipsDir
     }
-  };
-}
-
-async function selectOutputFolder() {
-  try {
-    return await selectOutputFolderWithShell();
-  } catch {
-    return await selectOutputFolderWithPowerShell();
-  }
-}
-
-async function selectOutputFolderWithShell() {
-  const scriptPath = join(tempDir, `select-folder-${randomUUID()}.vbs`);
-  const script = [
-    'Set shell = CreateObject("Shell.Application")',
-    'Set folder = shell.BrowseForFolder(0, "Select folder for clip export", &H00000041, 17)',
-    "If Not folder Is Nothing Then",
-    "  WScript.Echo folder.Self.Path",
-    "End If"
-  ].join("\r\n");
-
-  await writeFile(scriptPath, script, "utf8");
-  try {
-    const result = await runCommand("cscript.exe", ["//nologo", scriptPath], { timeout: 120000 });
-    const path = result.stdout.trim();
-    return {
-      path,
-      selected: Boolean(path)
-    };
-  } finally {
-    try {
-      await unlink(scriptPath);
-    } catch {
-      // temporary dialog script cleanup is best-effort
-    }
-  }
-}
-
-async function selectOutputFolderWithPowerShell() {
-  const script = `
-Add-Type -AssemblyName System.Windows.Forms
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = "Выберите папку для сохранения клипов"
-$dialog.ShowNewFolderButton = $true
-$result = $dialog.ShowDialog()
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-  Write-Output $dialog.SelectedPath
-}
-`;
-  const encoded = Buffer.from(script, "utf16le").toString("base64");
-  const result = await runCommand("powershell.exe", [
-    "-NoProfile",
-    "-STA",
-    "-EncodedCommand",
-    encoded
-  ], { timeout: 300000 });
-  const path = result.stdout.trim();
-  return {
-    path,
-    selected: Boolean(path)
   };
 }
 
@@ -233,18 +182,48 @@ async function probeSource(sourceUrl) {
         message: `Найдено видео в кейсе: ${enriched.length}. Выберите нужный ролик.`
       };
     }
-    throw statusError("В этом Behance-кейсе не нашел поддерживаемое видео. GIF и картинки пропущены.", 404);
+    throw statusError("В этом Behance-кейсе не найдено поддерживаемое видео. GIF и картинки пропущены.", 404);
   }
 
   const result = await runCommand("yt-dlp", ["--dump-json", "--no-playlist", parsedUrl.href], { timeout: 30000 });
   const info = JSON.parse(result.stdout);
   return {
     url: parsedUrl.href,
+    previewUrl: getPreviewUrl(info),
     provider: detectProvider(parsedUrl.href),
     title: info.title || "",
     duration: Number(info.duration || 30),
     thumbnail: info.thumbnail || "",
     canDownload: true
+  };
+}
+
+async function createPreview(sourceUrl) {
+  const parsedUrl = validateUrl(sourceUrl);
+  const ytdlp = await hasCommand("yt-dlp");
+
+  if (/^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(parsedUrl.href)) {
+    return {
+      previewUrl: parsedUrl.href,
+      provider: detectProvider(parsedUrl.href)
+    };
+  }
+
+  if (!ytdlp) {
+    throw statusError("Для предпросмотра Vimeo/YouTube нужен yt-dlp.", 409);
+  }
+
+  const result = await runCommand("yt-dlp", ["--dump-json", "--no-playlist", parsedUrl.href], { timeout: 30000 });
+  const info = JSON.parse(result.stdout);
+  const previewUrl = getPreviewUrl(info);
+  if (!previewUrl) {
+    throw statusError("Не удалось получить временную ссылку для предпросмотра.", 502);
+  }
+
+  return {
+    previewUrl,
+    provider: detectProvider(parsedUrl.href),
+    expiresSoon: true
   };
 }
 
@@ -263,6 +242,18 @@ async function createClip(input) {
     throw statusError("Для референсов лучше держать фрагмент до 60 секунд.", 400);
   }
 
+  if (remoteProcessorUrl) {
+    return createRemoteClip({
+      url: input.url,
+      sourceUrl: sourceUrl.href,
+      title,
+      start,
+      end,
+      duration,
+      quality
+    });
+  }
+
   const [ffmpeg, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("yt-dlp")]);
   if (!ffmpeg || !ytdlp) {
     throw statusError(`Для экспорта нужны зависимости: ${!ytdlp ? "yt-dlp " : ""}${!ffmpeg ? "ffmpeg" : ""}`.trim(), 409);
@@ -271,29 +262,25 @@ async function createClip(input) {
   const id = randomUUID();
   const outputName = `${safeFileName(title)}-${id.slice(0, 8)}.mp4`;
   const outputPath = join(clipsDir, outputName);
-  const requestedOutputDir = normalizeOutputDir(input.outputDir);
   const sourcePath = join(tempDir, `${id}.source.%(ext)s`);
 
-  await runCommand("yt-dlp", [
-    "--no-playlist",
-    "-f",
-    getYtdlpFormat(quality),
-    "--merge-output-format",
-    "mp4",
-    "-o",
-    sourcePath,
-    sourceUrl.href
-  ], { timeout: 120000 });
+  try {
+    await runCommand("yt-dlp", [
+      "--no-playlist",
+      "-f",
+      getYtdlpFormat(quality),
+      "--merge-output-format",
+      "mp4",
+      "-o",
+      sourcePath,
+      sourceUrl.href
+    ], { timeout: 120000 });
 
-  const mediaFiles = await findDownloadedMediaFiles(id);
-  await cutMedia(mediaFiles, start, duration, outputPath, quality);
-  await assertVideoFile(outputPath);
-
-  let copiedTo = "";
-  if (requestedOutputDir) {
-    await mkdir(requestedOutputDir, { recursive: true });
-    copiedTo = join(requestedOutputDir, outputName);
-    await copyFile(outputPath, copiedTo);
+    const mediaFiles = await findDownloadedMediaFiles(id);
+    await cutMedia(mediaFiles, start, duration, outputPath, quality);
+    await assertVideoFile(outputPath);
+  } finally {
+    await cleanupTempFiles(id);
   }
 
   const clip = {
@@ -308,14 +295,51 @@ async function createClip(input) {
     createdAt: new Date().toISOString(),
     file: normalize(outputPath),
     outputName,
-    copiedTo: copiedTo ? normalize(copiedTo) : "",
     href: `/clips/${outputName}`
   };
 
   const library = await readLibrary();
   library.unshift(clip);
-  await writeFile(libraryPath, `${JSON.stringify(library, null, 2)}\n`, "utf8");
-  await cleanupTempDir();
+  await writeLibrary(await pruneLibrary(library));
+  return clip;
+}
+
+async function createRemoteClip(payload) {
+  const response = await fetch(remoteProcessorUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(remoteProcessorToken ? { "Authorization": `Bearer ${remoteProcessorToken}` } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw statusError(data.error || `Облачный обработчик вернул статус ${response.status}.`, response.status);
+  }
+
+  const clip = {
+    id: data.id || randomUUID(),
+    title: data.title || payload.title,
+    sourceUrl: payload.sourceUrl,
+    provider: detectProvider(payload.sourceUrl),
+    start: payload.start,
+    end: payload.end,
+    duration: payload.duration,
+    quality: payload.quality,
+    createdAt: data.createdAt || new Date().toISOString(),
+    file: "",
+    outputName: data.outputName || "",
+    href: data.href || data.url || data.publicUrl
+  };
+
+  if (!clip.href) {
+    throw statusError("Облачный обработчик не вернул ссылку на готовый фрагмент.", 502);
+  }
+
+  const library = await readLibrary();
+  library.unshift(clip);
+  await writeLibrary(await pruneLibrary(library));
   return clip;
 }
 
@@ -328,6 +352,19 @@ async function cleanupTempDir() {
   }
 }
 
+async function cleanupTempFiles(id) {
+  try {
+    const entries = await readdir(tempDir, { withFileTypes: true });
+    await Promise.all(
+      entries
+        .filter((entry) => entry.name.startsWith(`${id}.`))
+        .map((entry) => rm(join(tempDir, entry.name), { recursive: true, force: true }))
+    );
+  } catch (error) {
+    console.warn(`Could not clean temporary files: ${error.message}`);
+  }
+}
+
 async function deleteClip(id) {
   const library = await readLibrary();
   const clip = library.find((item) => item.id === id);
@@ -336,18 +373,8 @@ async function deleteClip(id) {
   }
 
   const nextLibrary = library.filter((item) => item.id !== id);
-  await writeFile(libraryPath, `${JSON.stringify(nextLibrary, null, 2)}\n`, "utf8");
-
-  if (clip.file) {
-    const filePath = resolve(clip.file);
-    if (filePath.startsWith(resolve(clipsDir))) {
-      try {
-        await unlink(filePath);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-    }
-  }
+  await writeLibrary(nextLibrary);
+  await removeLocalClipFile(clip);
 
   return { deleted: true, id };
 }
@@ -406,6 +433,7 @@ async function enrichVideoOptions(options) {
       enriched.push({
         id: `${option.provider.toLowerCase()}-${index}`,
         url: option.url,
+        previewUrl: getPreviewUrl(info),
         provider: option.provider,
         title: info.title || `${option.provider} video ${index + 1}`,
         duration: Number(info.duration || 30),
@@ -441,7 +469,7 @@ async function enrichAdobeCcvOption(option, index) {
   const poster = matchFirst(html, /"posterframe"\s*:\s*"([^"]+)"/) || matchFirst(html, /data-poster="([^"]+)"/);
   const duration = Number(matchFirst(html, /"duration"\s*:\s*([\d.]+)/) || 30);
 
-  if (!mp4Url) throw new Error("Не нашел mp4URL в Adobe CCV embed.");
+  if (!mp4Url) throw new Error("Не найден mp4URL в Adobe CCV embed.");
   return {
     id: `adobe-ccv-${index}`,
     url: mp4Url,
@@ -456,6 +484,26 @@ async function enrichAdobeCcvOption(option, index) {
 function matchFirst(value, pattern) {
   const match = value.match(pattern);
   return match ? match[1].replace(/&amp;/g, "&") : "";
+}
+
+function getPreviewUrl(info) {
+  if (typeof info.url === "string" && /^https?:\/\//i.test(info.url)) {
+    return info.url;
+  }
+
+  const requested = [
+    ...(Array.isArray(info.requested_downloads) ? info.requested_downloads : []),
+    ...(Array.isArray(info.requested_formats) ? info.requested_formats : []),
+    ...(Array.isArray(info.formats) ? info.formats : [])
+  ];
+  const playable = requested.find((format) => {
+    if (!format?.url || !/^https?:\/\//i.test(format.url)) return false;
+    if (format.vcodec === "none") return false;
+    const protocol = String(format.protocol || "");
+    return !protocol.includes("m3u8") && !protocol.includes("dash");
+  });
+
+  return playable?.url || "";
 }
 
 function addVideoCandidate(candidates, url, provider) {
@@ -555,16 +603,6 @@ async function assertVideoFile(filePath) {
   }
 }
 
-function normalizeOutputDir(value) {
-  if (!value || !String(value).trim()) return "";
-  const resolved = resolve(String(value).trim().replace(/^"|"$/g, ""));
-  const parsedRoot = resolve(resolved).slice(0, 3);
-  if (!/^[a-z]:\\/i.test(parsedRoot)) {
-    throw statusError("Укажите полный путь папки, например C:\\Users\\BBulat\\Videos\\Refs.", 400);
-  }
-  return resolved;
-}
-
 function normalizeQuality(value) {
   const allowed = new Set(["source", "1080", "720", "480"]);
   const quality = String(value || "720");
@@ -583,6 +621,41 @@ function getMaxHeight(quality) {
 
 async function readLibrary() {
   return JSON.parse((await readFile(libraryPath, "utf8")).replace(/^\uFEFF/, ""));
+}
+
+async function writeLibrary(library) {
+  await writeFile(libraryPath, `${JSON.stringify(library, null, 2)}\n`, "utf8");
+}
+
+async function pruneLibrary(library) {
+  const ttlMs = clipTtlHours > 0 ? clipTtlHours * 60 * 60 * 1000 : 0;
+  const now = Date.now();
+  const keep = [];
+  const remove = [];
+
+  for (const [index, clip] of library.entries()) {
+    const expiredByTtl = ttlMs > 0 && clip.createdAt && now - Date.parse(clip.createdAt) > ttlMs;
+    const expiredByCount = maxLocalClips > 0 && index >= maxLocalClips;
+    if (expiredByTtl || expiredByCount) {
+      remove.push(clip);
+    } else {
+      keep.push(clip);
+    }
+  }
+
+  await Promise.all(remove.map((clip) => removeLocalClipFile(clip)));
+  return keep;
+}
+
+async function removeLocalClipFile(clip) {
+  if (!clip.file) return;
+  const filePath = resolve(clip.file);
+  if (!filePath.startsWith(resolve(clipsDir))) return;
+  try {
+    await unlink(filePath);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
 }
 
 async function readJson(req) {
@@ -643,7 +716,13 @@ function detectProvider(value) {
 function hasCommand(command) {
   return new Promise((resolveCheck) => {
     const versionArgs = command === "ffmpeg" ? ["-version"] : ["--version"];
-    const child = spawn(resolveCommand(command), versionArgs, { shell: false });
+    let child;
+    try {
+      child = spawn(resolveCommand(command), versionArgs, { shell: false });
+    } catch {
+      resolveCheck(false);
+      return;
+    }
     child.on("error", () => resolveCheck(false));
     child.on("close", (code) => resolveCheck(code === 0));
   });
@@ -651,7 +730,13 @@ function hasCommand(command) {
 
 function runCommand(command, args, options = {}) {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(resolveCommand(command), args, { shell: false });
+    let child;
+    try {
+      child = spawn(resolveCommand(command), args, { shell: false });
+    } catch (error) {
+      rejectRun(error);
+      return;
+    }
     let stdout = "";
     let stderr = "";
     const timeout = setTimeout(() => {
@@ -726,3 +811,4 @@ function statusError(message, status) {
   error.status = status;
   return error;
 }
+

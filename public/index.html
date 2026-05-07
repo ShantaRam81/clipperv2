@@ -10,27 +10,35 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <main class="app">
-      <section class="workspace">
+    <main class="app-shell">
+      <section class="composer" aria-label="Создание фрагмента">
         <header class="topbar">
-          <div>
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="title-block">
+            <p class="eyebrow">Web reference studio</p>
             <h1>Reference Clipper</h1>
-            <p>Короткие видеофрагменты из Behance, Vimeo, YouTube и других страниц.</p>
+            <p>Сохраняйте короткие видеофрагменты из Behance, Vimeo, YouTube и прямых ссылок в веб-библиотеку.</p>
           </div>
           <div id="status" class="status">Проверка</div>
         </header>
 
-        <form id="clipForm" class="panel">
+        <form id="clipForm" class="clip-card">
           <label class="field full">
-            <span>Ссылка</span>
-            <input id="url" type="url" placeholder="Вставьте ссылку на Behance, Vimeo или YouTube" required>
+            <span>Ссылка на источник</span>
+            <input id="url" type="url" placeholder="https://www.behance.net/gallery/..." required>
           </label>
 
           <div id="sourcePreview" class="source-preview" hidden>
             <img id="thumbnail" alt="">
             <div>
+              <span class="meta-label">Источник</span>
               <strong id="sourceTitle">Источник</strong>
-              <span id="sourceMeta">00:30</span>
+              <small id="sourceMeta">00:30</small>
             </div>
           </div>
 
@@ -93,15 +101,18 @@
                 <option value="source">Исходное</option>
               </select>
             </label>
-            <button type="submit" id="saveBtn">Сохранить фрагмент</button>
+            <button type="submit" id="saveBtn">Сохранить в библиотеку</button>
           </div>
         </form>
       </section>
 
-      <aside class="library">
+      <aside class="library" aria-label="Библиотека">
         <header>
-          <h2>Библиотека</h2>
-          <button type="button" id="refreshBtn">Обновить</button>
+          <div>
+            <p class="eyebrow">Saved clips</p>
+            <h2>Библиотека</h2>
+          </div>
+          <button type="button" id="refreshBtn" aria-label="Обновить библиотеку">↻</button>
         </header>
         <div id="message" class="message"></div>
         <div id="clips" class="clips"></div>
