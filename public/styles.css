@@ -1,14 +1,16 @@
 :root {
   color-scheme: dark;
-  --bg: #0e0f11;
-  --surface: #141518;
-  --surface-2: #1a1b1f;
+  --bg: #0b0d0e;
+  --surface: #121518;
+  --surface-2: #191d22;
   --ink: #f2f2f3;
-  --muted: #9b9da6;
-  --faint: #5c5f68;
+  --muted: #a7b1c2;
+  --faint: #687285;
   --line: rgba(255, 255, 255, 0.08);
   --accent: #6ee58e;
   --accent-muted: rgba(110, 229, 142, 0.16);
+  --cool: #8bb8ff;
+  --cool-muted: rgba(139, 184, 255, 0.14);
   --danger: #ff6f7f;
 }
 
@@ -18,13 +20,17 @@
 }
 
 html {
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(110, 229, 142, 0.09), transparent 28%),
+    linear-gradient(145deg, #0b0d0e 0%, #101215 52%, #0b0d0e 100%);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 44px 44px,
+    transparent;
   color: var(--ink);
   font-family: "Inter Tight", "SF Pro Display", "SF Pro Text", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
@@ -43,22 +49,24 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 1px;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
   min-height: 100vh;
-  background: var(--line);
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
 .composer,
 .library {
-  background: var(--bg);
+  background: transparent;
 }
 
 .composer {
   display: grid;
   align-content: start;
-  gap: 22px;
-  padding: 28px clamp(22px, 4vw, 48px);
+  gap: 18px;
+  padding: 8px 0;
 }
 
 .topbar {
@@ -97,7 +105,7 @@ p {
 
 h1 {
   margin-top: 2px;
-  font-size: clamp(32px, 4vw, 52px);
+  font-size: clamp(34px, 4vw, 56px);
   line-height: 0.98;
   font-weight: 700;
 }
@@ -109,7 +117,7 @@ h2 {
 }
 
 .title-block p:not(.eyebrow) {
-  max-width: 580px;
+  max-width: 620px;
   margin-top: 8px;
   color: var(--muted);
   font-size: 15px;
@@ -147,8 +155,34 @@ h2 {
 
 .clip-card {
   display: grid;
+  grid-template-columns: minmax(260px, 330px) minmax(420px, 1fr) minmax(260px, 320px);
+  grid-template-areas: "source timeline export";
   gap: 12px;
-  max-width: 920px;
+  align-items: start;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(18, 21, 24, 0.86);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+}
+
+.source-panel,
+.export-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.source-panel {
+  grid-area: source;
+}
+
+.export-panel {
+  grid-area: export;
+  position: sticky;
+  top: 20px;
 }
 
 .field {
@@ -175,7 +209,7 @@ select {
   height: 46px;
   border: 0;
   border-radius: 8px;
-  background: var(--surface);
+  background: rgba(7, 9, 11, 0.62);
   color: var(--ink);
   padding: 0 14px;
   outline: 0;
@@ -192,12 +226,12 @@ select:focus {
 
 .source-preview {
   display: grid;
-  grid-template-columns: 116px minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: center;
-  padding: 10px;
+  padding: 0;
   border-radius: 8px;
-  background: var(--surface);
+  background: transparent;
 }
 
 .source-preview img,
@@ -219,6 +253,7 @@ select:focus {
 
 .source-preview strong {
   margin-top: 4px;
+  font-size: 18px;
 }
 
 .source-preview small,
@@ -237,6 +272,9 @@ select:focus {
 .video-options {
   display: grid;
   gap: 8px;
+  max-height: min(42vh, 420px);
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .video-options::before {
@@ -245,14 +283,14 @@ select:focus {
 
 .video-option {
   display: grid;
-  grid-template-columns: 18px 96px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 16px 86px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
   width: 100%;
   min-height: 70px;
   padding: 8px;
   border-radius: 8px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.035);
   color: var(--ink);
   text-align: left;
 }
@@ -289,11 +327,10 @@ select:focus {
 }
 
 .timeline-block {
+  grid-area: timeline;
   display: grid;
   gap: 12px;
-  padding: 18px;
-  border-radius: 10px;
-  background: var(--surface);
+  padding: 16px;
 }
 
 .timeline-head {
@@ -311,7 +348,7 @@ select:focus {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
   align-items: center;
-  min-height: 80px;
+  min-height: 94px;
   padding-top: 24px;
 }
 
@@ -354,7 +391,7 @@ select:focus {
 
 .filmstrip {
   position: relative;
-  height: 56px;
+  height: 68px;
   overflow: hidden;
   border-radius: 0 8px 8px 0;
   background:
@@ -370,7 +407,7 @@ select:focus {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(72px, 1fr);
-  opacity: 0.52;
+  opacity: 0.72;
 }
 
 .film-frame {
@@ -419,7 +456,8 @@ select:focus {
 
 .preview-video {
   width: 100%;
-  height: 188px;
+  max-height: 320px;
+  aspect-ratio: 16 / 9;
   border-radius: 8px;
   background: #050506;
   object-fit: contain;
@@ -481,10 +519,6 @@ input[type="range"]::-moz-range-thumb {
   align-items: end;
 }
 
-.save-row {
-  grid-template-columns: minmax(176px, 240px) minmax(220px, 1fr);
-}
-
 .tag-chips {
   display: flex;
   flex-wrap: wrap;
@@ -523,9 +557,15 @@ input[type="range"]::-moz-range-thumb {
 .library {
   display: grid;
   grid-template-rows: auto auto 1fr;
-  gap: 16px;
-  min-height: 100vh;
-  padding: 28px 24px;
+  gap: 14px;
+  align-self: start;
+  position: sticky;
+  top: 20px;
+  min-height: calc(100vh - 40px);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(18, 21, 24, 0.72);
 }
 
 .library header {
@@ -546,7 +586,10 @@ input[type="range"]::-moz-range-thumb {
 
 .message {
   min-height: 20px;
-  color: var(--muted);
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--cool-muted);
+  color: #c9dcff;
   font-size: 14px;
   line-height: 1.35;
 }
@@ -592,15 +635,37 @@ input[type="range"]::-moz-range-thumb {
     grid-template-columns: 1fr;
   }
 
+  .clip-card {
+    grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+    grid-template-areas:
+      "source timeline"
+      "export export";
+  }
+
   .library {
+    position: static;
     min-height: auto;
+  }
+
+  .export-panel {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .export-panel #saveBtn,
+  .export-panel .tag-chips {
+    grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 640px) {
+  .app-shell {
+    padding: 14px;
+  }
+
   .composer,
   .library {
-    padding: 20px;
+    padding: 0;
   }
 
   .topbar {
@@ -613,7 +678,20 @@ input[type="range"]::-moz-range-thumb {
   }
 
   h1 {
-    font-size: 40px;
+    font-size: 38px;
+  }
+
+  .clip-card {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "source"
+      "timeline"
+      "export";
+  }
+
+  .panel,
+  .library {
+    padding: 12px;
   }
 
   .timeline-head {
@@ -621,9 +699,16 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .time-inputs,
-  .save-row,
-  .source-preview,
+  .export-panel,
   .video-option {
     grid-template-columns: 1fr;
+  }
+
+  .segment-preview {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .play-preview {
+    width: 44px;
   }
 }

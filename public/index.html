@@ -28,23 +28,25 @@
         </header>
 
         <form id="clipForm" class="clip-card">
-          <label class="field full">
-            <span>Ссылка на источник</span>
-            <input id="url" type="url" placeholder="https://www.behance.net/gallery/..." required>
-          </label>
+          <div class="source-panel panel">
+            <label class="field full">
+              <span>Ссылка на источник</span>
+              <input id="url" type="url" placeholder="https://www.behance.net/gallery/..." required>
+            </label>
 
-          <div id="sourcePreview" class="source-preview" hidden>
-            <img id="thumbnail" alt="">
-            <div>
-              <span class="meta-label">Источник</span>
-              <strong id="sourceTitle">Источник</strong>
-              <small id="sourceMeta">00:30</small>
+            <div id="sourcePreview" class="source-preview" hidden>
+              <img id="thumbnail" alt="">
+              <div>
+                <span class="meta-label">Источник</span>
+                <strong id="sourceTitle">Источник</strong>
+                <small id="sourceMeta">00:30</small>
+              </div>
             </div>
+
+            <div id="videoOptions" class="video-options" hidden></div>
           </div>
 
-          <div id="videoOptions" class="video-options" hidden></div>
-
-          <section class="timeline-block" aria-label="Выбор фрагмента">
+          <section class="timeline-block panel" aria-label="Выбор фрагмента">
             <div class="timeline-head">
               <span>Фрагмент</span>
               <strong id="rangeLabel">00:00.0 - 00:05.0</strong>
@@ -86,19 +88,19 @@
             </div>
           </section>
 
-          <label class="field full">
-            <span>Название фрагмента</span>
-            <input id="title" type="text" placeholder="Например: kinetic typography / logo reveal" required>
-          </label>
+          <div class="export-panel panel">
+            <label class="field full">
+              <span>Название фрагмента</span>
+              <input id="title" type="text" placeholder="Например: kinetic typography / logo reveal" required>
+            </label>
 
-          <label class="field full">
-            <span>Теги для имени файла</span>
-            <input id="tagInput" type="text" list="tagSuggestions" placeholder="Например: car, ui, motion. Enter добавляет тег">
-            <datalist id="tagSuggestions"></datalist>
-          </label>
-          <div id="tagChips" class="tag-chips" aria-label="Выбранные теги"></div>
+            <label class="field full">
+              <span>Теги для имени файла</span>
+              <input id="tagInput" type="text" list="tagSuggestions" placeholder="car, ui, motion">
+              <datalist id="tagSuggestions"></datalist>
+            </label>
+            <div id="tagChips" class="tag-chips" aria-label="Выбранные теги"></div>
 
-          <div class="save-row">
             <label class="field">
               <span>Качество</span>
               <select id="quality">

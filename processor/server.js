@@ -128,7 +128,7 @@ async function createClip(input) {
   try {
     const mediaFiles = await resolveMediaFiles(sourceUrl.href, quality);
     await cutMedia(mediaFiles, start, duration, outputPath, quality);
-    await assertNonEmptyFile(outputPath);
+    await assertVideoFile(outputPath);
   } catch (error) {
     await unlink(outputPath).catch(() => {});
     throw error;
@@ -149,17 +149,14 @@ async function createFrames(input) {
   const duration = Math.max(1, Number(input.duration || 30));
   const count = Math.min(12, Math.max(3, Number(input.count || 9)));
   const id = randomUUID();
+  const mediaFiles = await resolveMediaFiles(sourceUrl.href, "480");
   const frames = [];
 
   try {
     for (let index = 0; index < count; index += 1) {
       const time = clamp((duration * (index + 0.5)) / count, 0, Math.max(0, duration - 0.05));
       const framePath = join(tempDir, `${id}-${index}.jpg`);
-      if (isDirectVideoUrl(sourceUrl.href)) {
-        await captureFrame(sourceUrl.href, time, framePath);
-      } else {
-        await captureSourceFrame(sourceUrl.href, time, framePath);
-      }
+      await captureFrame(mediaFiles.videoPath, time, framePath, mediaFiles);
       const data = await readFile(framePath);
       frames.push(`data:image/jpeg;base64,${data.toString("base64")}`);
       await unlink(framePath).catch(() => {});
@@ -274,8 +271,8 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const info = await getYtdlpInfo(sourceUrl);
   const infoProtocol = String(info.protocol || "");
   const cleanInfoUrl = cleanMediaUrl(info.url);
-  if (cleanInfoUrl && !infoProtocol.includes("m3u8") && !infoProtocol.includes("dash")) {
-    return { videoPath: cleanInfoUrl, audioPath: "" };
+  if (cleanInfoUrl && !isStreamProtocol(infoProtocol)) {
+    return { videoPath: cleanInfoUrl, audioPath: "", streamed: false };
   }
 
   const requested = [
@@ -292,7 +289,7 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const hasAudio = (format) => Boolean(format.acodec && format.acodec !== "none");
   const isPlainHttpMedia = (format) => {
     const protocol = String(format.protocol || "");
-    return !protocol.includes("m3u8") && !protocol.includes("dash");
+    return !isStreamProtocol(protocol);
   };
   const byQuality = (a, b) => {
     const aScore = Number(a.height || 0) * 100000 + Number(a.tbr || a.vbr || a.abr || 0);
@@ -303,7 +300,7 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const combined = formats
     .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
     .sort(byQuality)[0];
-  if (combined) return { videoPath: combined.url, audioPath: "" };
+  if (combined) return { videoPath: combined.url, audioPath: "", streamed: false };
 
   const video = formats
     .filter((format) => hasVideo(format) && !hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
@@ -312,18 +309,18 @@ async function resolveMediaFiles(sourceUrl, quality) {
     .filter((format) => hasAudio(format) && !hasVideo(format) && isPlainHttpMedia(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
   const streamedCombined = formats
-    .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format))
+    .filter((format) => hasVideo(format) && hasAudio(format) && withinStreamQuality(format, maxHeight))
     .sort(byQuality)[0];
-  if (!video && streamedCombined) return { videoPath: streamedCombined.url, audioPath: "" };
+  if (!video && streamedCombined) return { videoPath: streamedCombined.url, audioPath: "", streamed: true };
   const streamedVideo = formats
-    .filter((format) => hasVideo(format) && !hasAudio(format) && withinQuality(format))
+    .filter((format) => hasVideo(format) && !hasAudio(format) && withinStreamQuality(format, maxHeight))
     .sort(byQuality)[0];
   const streamedAudio = formats
     .filter((format) => hasAudio(format) && !hasVideo(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
-  if (!video && streamedVideo) return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "" };
+  if (!video && streamedVideo) return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "", streamed: true };
   if (!video) throw statusError("В источнике не найден видеопоток.", 500);
-  return { videoPath: video.url, audioPath: audio?.url || "" };
+  return { videoPath: video.url, audioPath: audio?.url || "", streamed: false };
 }
 
 async function getYtdlpInfo(url) {
@@ -340,26 +337,43 @@ async function getYtdlpInfo(url) {
 }
 
 async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720") {
-  const args = ["-y", "-ss", formatSeconds(start), "-t", formatSeconds(duration), "-i", mediaFiles.videoPath];
+  const args = ["-y"];
+
+  if (!mediaFiles.streamed) {
+    args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
+  }
+  args.push("-i", mediaFiles.videoPath);
+
   if (mediaFiles.audioPath && mediaFiles.audioPath !== mediaFiles.videoPath) {
-    args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration), "-i", mediaFiles.audioPath);
+    if (!mediaFiles.streamed) {
+      args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
+    }
+    args.push("-i", mediaFiles.audioPath);
     args.push("-map", "0:v:0", "-map", "1:a:0");
   } else {
     args.push("-map", "0:v:0", "-map", "0:a:0?");
   }
+
+  if (mediaFiles.streamed) {
+    args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
+  }
+
   const maxHeight = getMaxHeight(quality);
   if (maxHeight) args.push("-vf", `scale=-2:min(${maxHeight}\\,ih)`);
   args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-movflags", "+faststart", outputPath);
   await runCommand("ffmpeg", args, { timeout: 120000 });
 }
 
-async function captureFrame(videoPath, time, outputPath) {
-  const result = await runCommand("ffmpeg", [
-    "-y",
-    "-ss",
-    formatSeconds(time),
-    "-i",
-    videoPath,
+async function captureFrame(videoPath, time, outputPath, mediaFiles = {}) {
+  const args = ["-y"];
+  if (!mediaFiles.streamed) {
+    args.push("-ss", formatSeconds(time));
+  }
+  args.push("-i", videoPath);
+  if (mediaFiles.streamed) {
+    args.push("-ss", formatSeconds(time));
+  }
+  args.push(
     "-frames:v",
     "1",
     "-vf",
@@ -371,7 +385,11 @@ async function captureFrame(videoPath, time, outputPath) {
     "-update",
     "1",
     outputPath
-  ], { timeout: 45000 });
+  );
+
+  const result = await runCommand("ffmpeg", [
+    ...args
+  ], { timeout: mediaFiles.streamed ? 90000 : 45000 });
   try {
     await assertNonEmptyFile(outputPath);
   } catch (error) {
@@ -414,6 +432,23 @@ async function captureSourceFrame(sourceUrl, time, outputPath) {
 async function assertNonEmptyFile(filePath) {
   const info = await stat(filePath);
   if (!info.size) throw statusError("Фрагмент создан пустым файлом.", 500);
+}
+
+async function assertVideoFile(filePath) {
+  await assertNonEmptyFile(filePath);
+  const result = await runCommand("ffprobe", [
+    "-v",
+    "error",
+    "-show_entries",
+    "stream=codec_type",
+    "-of",
+    "csv=p=0",
+    filePath
+  ], { timeout: 30000 });
+  const streams = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!streams.includes("video")) {
+    throw statusError("Фрагмент создан без видеопотока.", 500);
+  }
 }
 
 function getPreviewUrl(info) {
@@ -597,6 +632,11 @@ function isDirectVideoUrl(value) {
   return /^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(value);
 }
 
+function isStreamProtocol(value) {
+  const protocol = String(value || "");
+  return protocol.includes("m3u8") || protocol.includes("dash");
+}
+
 function cleanMediaUrl(value) {
   return String(value || "").split(/\r?\n/).find((part) => /^https?:\/\//i.test(part.trim()))?.trim() || "";
 }
@@ -626,6 +666,11 @@ function normalizeQuality(value) {
 function getMaxHeight(quality) {
   if (quality === "source") return 0;
   return Number(quality) || 720;
+}
+
+function withinStreamQuality(format, maxHeight) {
+  const safeStreamHeight = maxHeight && maxHeight <= 720 ? maxHeight : 720;
+  return !format.height || Number(format.height) <= safeStreamHeight;
 }
 
 function sanitizeTitle(value) {

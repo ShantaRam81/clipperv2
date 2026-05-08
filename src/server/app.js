@@ -385,7 +385,7 @@ async function createFrames(input) {
     for (let index = 0; index < count; index += 1) {
       const time = clamp((safeDuration * (index + 0.5)) / count, 0, Math.max(0, safeDuration - 0.05));
       const framePath = join(tempDir, `${id}-${index}.jpg`);
-      await captureFrame(mediaFiles.videoPath, time, framePath);
+      await captureFrame(mediaFiles.videoPath, time, framePath, mediaFiles);
       const data = await readFile(framePath);
       frames.push(`data:image/jpeg;base64,${data.toString("base64")}`);
       await unlink(framePath).catch(() => {});
@@ -443,7 +443,7 @@ async function createClip(input) {
   try {
     const mediaFiles = await resolveMediaFiles(sourceUrl.href, quality);
     await cutMedia(mediaFiles, start, duration, outputPath, quality);
-    await assertNonEmptyFile(outputPath);
+    await assertVideoFile(outputPath);
   } catch (error) {
     try {
       await unlink(outputPath);
@@ -895,15 +895,15 @@ function isGif(value) {
 
 async function resolveMediaFiles(sourceUrl, quality) {
   if (isDirectVideoUrl(sourceUrl)) {
-    return { videoPath: sourceUrl, audioPath: "" };
+    return { videoPath: sourceUrl, audioPath: "", streamed: false };
   }
 
   const result = await runCommand("yt-dlp", ["--dump-json", "--no-playlist", sourceUrl], { timeout: 30000 });
   const info = JSON.parse(result.stdout);
   const infoProtocol = String(info.protocol || "");
   const cleanInfoUrl = cleanMediaUrl(info.url);
-  if (cleanInfoUrl && !infoProtocol.includes("m3u8") && !infoProtocol.includes("dash")) {
-    return { videoPath: cleanInfoUrl, audioPath: "" };
+  if (cleanInfoUrl && !isStreamProtocol(infoProtocol)) {
+    return { videoPath: cleanInfoUrl, audioPath: "", streamed: false };
   }
 
   const requested = [
@@ -920,7 +920,7 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const hasAudio = (format) => Boolean(format.acodec && format.acodec !== "none");
   const isPlainHttpMedia = (format) => {
     const protocol = String(format.protocol || "");
-    return !protocol.includes("m3u8") && !protocol.includes("dash");
+    return !isStreamProtocol(protocol);
   };
   const byQuality = (a, b) => {
     const aScore = Number(a.height || 0) * 100000 + Number(a.tbr || a.vbr || a.abr || 0);
@@ -932,7 +932,7 @@ async function resolveMediaFiles(sourceUrl, quality) {
     .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
     .sort(byQuality)[0];
   if (combined) {
-    return { videoPath: combined.url, audioPath: "" };
+    return { videoPath: combined.url, audioPath: "", streamed: false };
   }
 
   const video = formats
@@ -943,38 +943,48 @@ async function resolveMediaFiles(sourceUrl, quality) {
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
 
   const streamedCombined = formats
-    .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format))
+    .filter((format) => hasVideo(format) && hasAudio(format) && withinStreamQuality(format, maxHeight))
     .sort(byQuality)[0];
   if (!video && streamedCombined) {
-    return { videoPath: streamedCombined.url, audioPath: "" };
+    return { videoPath: streamedCombined.url, audioPath: "", streamed: true };
   }
 
   const streamedVideo = formats
-    .filter((format) => hasVideo(format) && !hasAudio(format) && withinQuality(format))
+    .filter((format) => hasVideo(format) && !hasAudio(format) && withinStreamQuality(format, maxHeight))
     .sort(byQuality)[0];
   const streamedAudio = formats
     .filter((format) => hasAudio(format) && !hasVideo(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
   if (!video && streamedVideo) {
-    return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "" };
+    return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "", streamed: true };
   }
 
   if (!video) {
     throw statusError("В источнике не найден видеопоток.", 500);
   }
 
-  return { videoPath: video.url, audioPath: audio?.url || "" };
+  return { videoPath: video.url, audioPath: audio?.url || "", streamed: false };
 }
 
 async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720") {
   const args = ["-y"];
 
-  args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration), "-i", mediaFiles.videoPath);
+  if (!mediaFiles.streamed) {
+    args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
+  }
+  args.push("-i", mediaFiles.videoPath);
   if (mediaFiles.audioPath && mediaFiles.audioPath !== mediaFiles.videoPath) {
-    args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration), "-i", mediaFiles.audioPath);
+    if (!mediaFiles.streamed) {
+      args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
+    }
+    args.push("-i", mediaFiles.audioPath);
     args.push("-map", "0:v:0", "-map", "1:a:0");
   } else {
     args.push("-map", "0:v:0", "-map", "0:a:0?");
+  }
+
+  if (mediaFiles.streamed) {
+    args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
   }
 
   const maxHeight = getMaxHeight(quality);
@@ -998,13 +1008,16 @@ async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720"
   await runCommand("ffmpeg", args, { timeout: 120000 });
 }
 
-async function captureFrame(videoPath, time, outputPath) {
-  const result = await runCommand("ffmpeg", [
-    "-y",
-    "-ss",
-    formatSeconds(time),
-    "-i",
-    videoPath,
+async function captureFrame(videoPath, time, outputPath, mediaFiles = {}) {
+  const args = ["-y"];
+  if (!mediaFiles.streamed) {
+    args.push("-ss", formatSeconds(time));
+  }
+  args.push("-i", videoPath);
+  if (mediaFiles.streamed) {
+    args.push("-ss", formatSeconds(time));
+  }
+  args.push(
     "-frames:v",
     "1",
     "-vf",
@@ -1016,7 +1029,8 @@ async function captureFrame(videoPath, time, outputPath) {
     "-update",
     "1",
     outputPath
-  ], { timeout: 45000 });
+  );
+  const result = await runCommand("ffmpeg", args, { timeout: mediaFiles.streamed ? 90000 : 45000 });
   try {
     await assertNonEmptyFile(outputPath);
   } catch (error) {
@@ -1044,6 +1058,14 @@ async function assertNonEmptyFile(filePath) {
   }
 }
 
+async function assertVideoFile(filePath) {
+  await assertNonEmptyFile(filePath);
+  const streams = await getStreams(filePath);
+  if (!streams.includes("video")) {
+    throw statusError("Фрагмент создан без видеопотока. Файл не сохранен как готовый клип.", 500);
+  }
+}
+
 function normalizeQuality(value) {
   const allowed = new Set(["source", "1080", "720", "480"]);
   const quality = String(value || "720");
@@ -1068,6 +1090,11 @@ function getYtdlpFormat(quality) {
 function getMaxHeight(quality) {
   if (quality === "source") return 0;
   return Number(quality) || 720;
+}
+
+function withinStreamQuality(format, maxHeight) {
+  const safeStreamHeight = maxHeight && maxHeight <= 720 ? maxHeight : 720;
+  return !format.height || Number(format.height) <= safeStreamHeight;
 }
 
 async function readLibrary() {
@@ -1139,6 +1166,11 @@ function validateUrl(value) {
 
 function isDirectVideoUrl(value) {
   return /^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(value);
+}
+
+function isStreamProtocol(value) {
+  const protocol = String(value || "");
+  return protocol.includes("m3u8") || protocol.includes("dash");
 }
 
 function cleanMediaUrl(value) {
