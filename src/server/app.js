@@ -570,13 +570,16 @@ async function proxyDownloadUrl(remoteUrl, fileName, res) {
     return sendJson(res, { error: "Remote clip file not found" }, response.status || 404);
   }
 
+  const buffer = Buffer.from(await response.arrayBuffer());
+  await deleteRemoteDownload(target);
+
   res.writeHead(200, {
     "Content-Type": response.headers.get("content-type") || "video/mp4",
     "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    "Content-Length": buffer.length
   });
-  await pipeResponseBody(response.body, res);
-  await deleteRemoteDownload(target);
+  res.end(buffer);
 }
 
 function isAllowedRemoteDownload(target) {
@@ -597,16 +600,6 @@ async function deleteRemoteDownload(target) {
       "Authorization": `Bearer ${remoteProcessorToken}`
     }
   }).catch(() => {});
-}
-
-function pipeResponseBody(body, res) {
-  return new Promise((resolvePipe, rejectPipe) => {
-    const stream = Readable.fromWeb(body);
-    stream.on("error", rejectPipe);
-    res.on("finish", resolvePipe);
-    res.on("error", rejectPipe);
-    stream.pipe(res);
-  });
 }
 
 async function discoverBehanceVideos(pageUrl) {
