@@ -98,6 +98,10 @@ export async function handleRequest(req, res) {
       return serveDownload(url, res);
     }
 
+    if (req.method === "GET" && url.pathname.startsWith("/remote-clips/")) {
+      return serveRemoteClip(url.pathname, res);
+    }
+
     if (req.method === "GET" && url.pathname.startsWith("/api/clips/") && url.pathname.endsWith("/file")) {
       const id = decodeURIComponent(url.pathname.replace("/api/clips/", "").replace("/file", ""));
       return serveLibraryClip(id, res);
@@ -513,7 +517,7 @@ async function callRemoteProcessor(payload) {
 
   return {
     ...clip,
-    downloadUrl: `/api/download?url=${encodeURIComponent(clip.href)}&name=${encodeURIComponent(clip.outputName || "clip.mp4")}`
+    downloadUrl: getRemoteClipDownloadUrl(clip.href)
   };
 }
 
@@ -590,6 +594,16 @@ async function proxyRemoteClip(clip, res) {
   Readable.fromWeb(response.body).pipe(res);
 }
 
+async function serveRemoteClip(pathname, res) {
+  const target = remoteClipTargetFromProxyPath(pathname);
+  if (!target) {
+    return sendJson(res, { error: "Remote clip target is unavailable" }, 404);
+  }
+
+  const fileName = sanitizeDownloadName(decodeURIComponent(target.pathname.split("/").pop() || "clip.mp4"));
+  return streamRemoteDownload(target, fileName, res);
+}
+
 async function serveDownload(url, res) {
   const remoteUrl = url.searchParams.get("url") || "";
   const localFile = url.searchParams.get("file") || "";
@@ -629,21 +643,30 @@ async function proxyDownloadUrl(remoteUrl, fileName, res) {
     return sendJson(res, { error: "Forbidden download target" }, 403);
   }
 
+  return streamRemoteDownload(target, fileName, res, { deleteAfter: true });
+}
+
+async function streamRemoteDownload(target, fileName, res, options = {}) {
   const response = await fetch(target.href);
   if (!response.ok || !response.body) {
     return sendJson(res, { error: "Remote clip file not found" }, response.status || 404);
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
-  await deleteRemoteDownload(target);
-
-  res.writeHead(200, {
+  const headers = {
     "Content-Type": response.headers.get("content-type") || "video/mp4",
     "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
-    "Cache-Control": "no-store",
-    "Content-Length": buffer.length
-  });
-  res.end(buffer);
+    "Cache-Control": "no-store"
+  };
+  const contentLength = response.headers.get("content-length");
+  if (contentLength) {
+    headers["Content-Length"] = contentLength;
+  }
+
+  res.writeHead(200, headers);
+  if (options.deleteAfter) {
+    res.on("finish", () => deleteRemoteDownload(target));
+  }
+  Readable.fromWeb(response.body).pipe(res);
 }
 
 function isAllowedRemoteDownload(target) {
@@ -653,6 +676,28 @@ function isAllowedRemoteDownload(target) {
     return target.host === processor.host && target.pathname.startsWith("/clips/");
   } catch {
     return false;
+  }
+}
+
+function getRemoteClipDownloadUrl(remoteUrl) {
+  try {
+    const target = validateUrl(remoteUrl);
+    if (!isAllowedRemoteDownload(target)) return remoteUrl;
+    return `/remote-clips/${target.pathname.replace(/^\/clips\/?/, "")}`;
+  } catch {
+    return remoteUrl;
+  }
+}
+
+function remoteClipTargetFromProxyPath(pathname) {
+  if (!remoteProcessorUrl) return null;
+  try {
+    const processor = new URL(remoteProcessorUrl);
+    const filePath = pathname.replace(/^\/remote-clips\/?/, "");
+    if (!filePath || filePath.includes("..")) return null;
+    return new URL(`/clips/${filePath}`, processor);
+  } catch {
+    return null;
   }
 }
 

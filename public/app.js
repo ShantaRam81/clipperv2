@@ -609,11 +609,15 @@ async function saveFileToDevice(url, fileName, fileHandle) {
   if (fileHandle) {
     try {
       setMessage("Скачиваю фрагмент...");
-      const writable = await fileHandle.createWritable();
       const response = await fetch(url);
       if (!response.ok) throw new Error("Не удалось скачать готовый фрагмент.");
-      await writable.write(await response.blob());
-      await writable.close();
+      const blob = await response.blob();
+      const writable = await fileHandle.createWritable();
+      try {
+        await writable.write(blob);
+      } finally {
+        await writable.close();
+      }
       setMessage("Фрагмент сохранен на устройство.");
       return;
     } catch (error) {

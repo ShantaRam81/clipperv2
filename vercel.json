@@ -22,6 +22,10 @@
   ],
   "routes": [
     {
+      "src": "/remote-clips/(.*)",
+      "dest": "http://144.31.184.79/clips/$1"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/[...path].js"
     },
