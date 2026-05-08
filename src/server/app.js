@@ -172,7 +172,21 @@ async function getHealth() {
     },
     storage: {
       clipsDir
-    }
+    },
+    ...(process.env.VERCEL ? { diagnostics: getRuntimeDiagnostics() } : {})
+  };
+}
+
+function getRuntimeDiagnostics() {
+  return {
+    cwd: process.cwd(),
+    commands: Object.fromEntries(["ffmpeg", "yt-dlp"].map((command) => {
+      const path = resolveCommand(command);
+      return [command, {
+        path,
+        exists: Boolean(path && existsSync(path))
+      }];
+    }))
   };
 }
 
