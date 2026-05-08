@@ -575,10 +575,8 @@ async function proxyDownloadUrl(remoteUrl, fileName, res) {
     "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
     "Cache-Control": "no-store"
   });
-  Readable.fromWeb(response.body).pipe(res);
-  res.on("finish", () => deleteRemoteDownload(target).catch((error) => {
-    console.warn(`Could not delete remote clip: ${error.message}`);
-  }));
+  await pipeResponseBody(response.body, res);
+  await deleteRemoteDownload(target);
 }
 
 function isAllowedRemoteDownload(target) {
@@ -599,6 +597,16 @@ async function deleteRemoteDownload(target) {
       "Authorization": `Bearer ${remoteProcessorToken}`
     }
   }).catch(() => {});
+}
+
+function pipeResponseBody(body, res) {
+  return new Promise((resolvePipe, rejectPipe) => {
+    const stream = Readable.fromWeb(body);
+    stream.on("error", rejectPipe);
+    res.on("finish", resolvePipe);
+    res.on("error", rejectPipe);
+    stream.pipe(res);
+  });
 }
 
 async function discoverBehanceVideos(pageUrl) {
