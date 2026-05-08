@@ -6,10 +6,12 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import ffmpegStaticPath from "ffmpeg-static";
+import ytdlpConstants from "yt-dlp-exec/src/constants.js";
 
 const require = createRequire(import.meta.url);
-const packagedFfmpegPath = safeRequire("ffmpeg-static");
-const packagedYtdlpConstants = safeRequire("yt-dlp-exec/src/constants");
+const packagedFfmpegPath = ffmpegStaticPath || "";
+const packagedYtdlpConstants = ytdlpConstants || {};
 
 const rootDir = process.cwd();
 const publicDir = join(rootDir, "public");
