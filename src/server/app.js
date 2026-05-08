@@ -733,7 +733,25 @@ function getPreviewUrl(info) {
 function addVideoCandidate(candidates, url, provider) {
   const cleanUrl = provider === "Vimeo" ? normalizeVimeoUrl(url) : url.replace(/&amp;/g, "&");
   if (!isGif(cleanUrl)) {
-    candidates.set(cleanUrl, { url: cleanUrl, provider });
+    candidates.set(getVideoCandidateKey(cleanUrl, provider), { url: cleanUrl, provider });
+  }
+}
+
+function getVideoCandidateKey(url, provider) {
+  if (provider !== "Vimeo") return url;
+  try {
+    const parsed = new URL(url);
+    const playerId = parsed.hostname.includes("player.vimeo.com")
+      ? parsed.pathname.match(/\/video\/(\d+)/)?.[1]
+      : "";
+    const pageMatch = parsed.hostname.includes("vimeo.com")
+      ? parsed.pathname.match(/^\/(\d+)(?:\/([^/?#]+))?/)
+      : null;
+    const id = playerId || pageMatch?.[1] || url;
+    const hash = parsed.searchParams.get("h") || pageMatch?.[2] || "";
+    return `vimeo:${id}:${hash}`;
+  } catch {
+    return url;
   }
 }
 
@@ -746,7 +764,7 @@ function normalizeVimeoUrl(url) {
       : "";
     if (playerId) {
       const hash = parsed.searchParams.get("h");
-      return hash ? `https://vimeo.com/${playerId}/${hash}` : `https://vimeo.com/${playerId}`;
+      return hash ? `https://vimeo.com/${playerId}/${hash}` : cleanUrl;
     }
   } catch {
     return cleanUrl;

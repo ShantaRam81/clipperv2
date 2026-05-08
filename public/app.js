@@ -584,15 +584,15 @@ async function saveFileToDevice(url, fileName, fileHandle) {
   if (fileHandle) {
     try {
       setMessage("Скачиваю фрагмент...");
+      const writable = await fileHandle.createWritable();
       const response = await fetch(url);
       if (!response.ok) throw new Error("Не удалось скачать готовый фрагмент.");
-      const writable = await fileHandle.createWritable();
       await writable.write(await response.blob());
       await writable.close();
       setMessage("Фрагмент сохранен на устройство.");
       return;
     } catch (error) {
-      throw new Error(error.message || "Не удалось записать файл в выбранную папку.");
+      setMessage("Браузер запретил запись в выбранную папку, запускаю обычное скачивание...");
     }
   }
 
