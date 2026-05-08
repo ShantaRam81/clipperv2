@@ -247,6 +247,13 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
 
 async function probeSource(sourceUrl) {
   const parsedUrl = validateUrl(sourceUrl);
+  if (remoteProcessorUrl) {
+    return callRemoteProcessor({
+      action: "probe",
+      url: parsedUrl.href
+    });
+  }
+
   const ytdlp = await hasCommand("yt-dlp");
 
   if (!ytdlp) {
@@ -393,6 +400,10 @@ async function createClip(input) {
 }
 
 async function createRemoteClip(payload) {
+  return callRemoteProcessor(payload);
+}
+
+async function callRemoteProcessor(payload) {
   const response = await fetch(remoteProcessorUrl, {
     method: "POST",
     headers: {
@@ -404,6 +415,10 @@ async function createRemoteClip(payload) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw statusError(data.error || `Облачный обработчик вернул статус ${response.status}.`, response.status);
+  }
+
+  if (payload.action === "probe") {
+    return data;
   }
 
   const clip = {
