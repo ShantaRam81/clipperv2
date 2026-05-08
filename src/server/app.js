@@ -173,21 +173,38 @@ async function getHealth() {
     storage: {
       clipsDir
     },
-    ...(process.env.VERCEL ? { diagnostics: getRuntimeDiagnostics() } : {})
+    ...(process.env.VERCEL ? { diagnostics: await getRuntimeDiagnostics() } : {})
   };
 }
 
-function getRuntimeDiagnostics() {
+async function getRuntimeDiagnostics() {
   return {
     cwd: process.cwd(),
-    commands: Object.fromEntries(["ffmpeg", "yt-dlp"].map((command) => {
+    commands: Object.fromEntries(await Promise.all(["ffmpeg", "yt-dlp"].map(async (command) => {
       const path = resolveCommand(command);
       return [command, {
         path,
-        exists: Boolean(path && existsSync(path))
+        exists: Boolean(path && existsSync(path)),
+        version: await getCommandVersion(command)
       }];
-    }))
+    })))
   };
+}
+
+async function getCommandVersion(command) {
+  try {
+    const result = await runCommand(command, command === "yt-dlp" ? ["--version"] : ["-version"], { timeout: 10000 });
+    return {
+      ok: true,
+      stdout: result.stdout.slice(0, 200),
+      stderr: result.stderr.slice(0, 200)
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: String(error.message || error).slice(0, 400)
+    };
+  }
 }
 
 async function selectOutputFolder() {
