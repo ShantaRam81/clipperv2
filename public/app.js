@@ -250,8 +250,11 @@ function applySource(data) {
   sourceMetaEl.textContent = `${data.provider} · ${formatTime(sourceDuration)}`;
   thumbnailEl.src = data.thumbnail || inlinePlaceholder();
   renderFilmFrames(data.thumbnail || inlinePlaceholder());
-  currentFilmstripUrl = selectedPreviewUrl;
-  if (selectedPreviewUrl) buildVideoFilmstrip(selectedPreviewUrl).catch(() => {});
+  currentFilmstripUrl = selectedSourceUrl;
+  buildServerFilmstrip(selectedSourceUrl, sourceDuration).catch(() => {
+    currentFilmstripUrl = selectedPreviewUrl;
+    if (selectedPreviewUrl) buildVideoFilmstrip(selectedPreviewUrl).catch(() => {});
+  });
   resetPreviewVideo();
   previewEl.hidden = false;
   syncRange("range");
@@ -295,6 +298,28 @@ async function buildVideoFilmstrip(url) {
   }
 
   if (currentFilmstripUrl !== url) return;
+  updateGeneratedThumbnail(frames[0]);
+  filmFramesEl.innerHTML = "";
+  for (const src of frames) {
+    const frame = document.createElement("span");
+    frame.className = "film-frame";
+    frame.style.setProperty("--thumb", `url("${src}")`);
+    filmFramesEl.append(frame);
+  }
+}
+
+async function buildServerFilmstrip(url, duration) {
+  const filmstripKey = url;
+  const data = await fetchJson("/api/frames", {
+    method: "POST",
+    body: JSON.stringify({ url, duration, count: 9 })
+  });
+  const frames = Array.isArray(data.frames) ? data.frames.filter(Boolean) : [];
+  if (!frames.length || currentFilmstripUrl !== filmstripKey) return;
+  renderGeneratedFilmFrames(frames);
+}
+
+function renderGeneratedFilmFrames(frames) {
   updateGeneratedThumbnail(frames[0]);
   filmFramesEl.innerHTML = "";
   for (const src of frames) {

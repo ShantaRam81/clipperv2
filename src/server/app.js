@@ -79,6 +79,11 @@ export async function handleRequest(req, res) {
       return sendJson(res, await createPreview(body.url));
     }
 
+    if (req.method === "POST" && url.pathname === "/api/frames") {
+      const body = await readJson(req);
+      return sendJson(res, await createFrames(body));
+    }
+
     if (req.method === "POST" && url.pathname === "/api/select-folder") {
       return sendJson(res, await selectOutputFolder());
     }
@@ -306,7 +311,6 @@ async function probeSource(sourceUrl) {
 
 async function createPreview(sourceUrl) {
   const parsedUrl = validateUrl(sourceUrl);
-  const ytdlp = await hasCommand("yt-dlp");
 
   if (/^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(parsedUrl.href)) {
     return {
@@ -315,6 +319,22 @@ async function createPreview(sourceUrl) {
     };
   }
 
+  if (remoteProcessorUrl) {
+    const data = await callRemoteProcessor({
+      action: "probe",
+      url: parsedUrl.href
+    });
+    if (!data.previewUrl) {
+      throw statusError("Не удалось получить временную ссылку для предпросмотра.", 502);
+    }
+    return {
+      previewUrl: data.previewUrl,
+      provider: data.provider || detectProvider(parsedUrl.href),
+      expiresSoon: true
+    };
+  }
+
+  const ytdlp = await hasCommand("yt-dlp");
   if (!ytdlp) {
     throw statusError("Для предпросмотра Vimeo/YouTube нужен yt-dlp.", 409);
   }
@@ -331,6 +351,50 @@ async function createPreview(sourceUrl) {
     provider: detectProvider(parsedUrl.href),
     expiresSoon: true
   };
+}
+
+async function createFrames(input) {
+  const sourceUrl = validateUrl(input.url || input.sourceUrl);
+  const duration = Math.max(1, Number(input.duration || 30));
+  const count = Math.min(12, Math.max(3, Number(input.count || 9)));
+
+  if (remoteProcessorUrl) {
+    return callRemoteProcessor({
+      action: "frames",
+      url: sourceUrl.href,
+      duration,
+      count
+    });
+  }
+
+  const [ffmpeg, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("yt-dlp")]);
+  if (!ffmpeg || !ytdlp) {
+    throw statusError("Для кадров таймлайна нужны ffmpeg и yt-dlp.", 409);
+  }
+
+  const id = randomUUID();
+  const mediaFiles = await resolveMediaFiles(sourceUrl.href, "480");
+  const frames = [];
+  const safeDuration = Math.max(1, duration);
+
+  try {
+    for (let index = 0; index < count; index += 1) {
+      const time = clamp((safeDuration * (index + 0.5)) / count, 0, Math.max(0, safeDuration - 0.05));
+      const framePath = join(tempDir, `${id}-${index}.jpg`);
+      await captureFrame(mediaFiles.videoPath, time, framePath);
+      const data = await readFile(framePath);
+      frames.push(`data:image/jpeg;base64,${data.toString("base64")}`);
+      await unlink(framePath).catch(() => {});
+    }
+  } finally {
+    await cleanupTempFiles(id);
+  }
+
+  if (!frames.length) {
+    throw statusError("Не удалось построить кадры таймлайна.", 502);
+  }
+
+  return { frames };
 }
 
 async function createClip(input) {
@@ -424,7 +488,7 @@ async function callRemoteProcessor(payload) {
     throw statusError(data.error || `Облачный обработчик вернул статус ${response.status}.`, response.status);
   }
 
-  if (payload.action === "probe") {
+  if (payload.action === "probe" || payload.action === "frames") {
     return data;
   }
 
@@ -791,11 +855,20 @@ async function resolveMediaFiles(sourceUrl, quality) {
 
   const result = await runCommand("yt-dlp", ["--dump-json", "--no-playlist", sourceUrl], { timeout: 30000 });
   const info = JSON.parse(result.stdout);
-  if (typeof info.url === "string" && /^https?:\/\//i.test(info.url)) {
-    return { videoPath: info.url, audioPath: "" };
+  const infoProtocol = String(info.protocol || "");
+  const cleanInfoUrl = cleanMediaUrl(info.url);
+  if (cleanInfoUrl && !infoProtocol.includes("m3u8") && !infoProtocol.includes("dash")) {
+    return { videoPath: cleanInfoUrl, audioPath: "" };
   }
 
-  const formats = Array.isArray(info.formats) ? info.formats.filter((format) => /^https?:\/\//i.test(format.url || "")) : [];
+  const requested = [
+    ...(Array.isArray(info.requested_downloads) ? info.requested_downloads : []),
+    ...(Array.isArray(info.requested_formats) ? info.requested_formats : []),
+    ...(Array.isArray(info.formats) ? info.formats : [])
+  ];
+  const formats = requested
+    .map((format) => ({ ...format, url: cleanMediaUrl(format.url) }))
+    .filter((format) => format.url);
   const maxHeight = getMaxHeight(quality);
   const withinQuality = (format) => !maxHeight || !format.height || Number(format.height) <= maxHeight;
   const hasVideo = (format) => Boolean(format.vcodec && format.vcodec !== "none");
@@ -823,6 +896,23 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const audio = formats
     .filter((format) => hasAudio(format) && !hasVideo(format) && isPlainHttpMedia(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+
+  const streamedCombined = formats
+    .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format))
+    .sort(byQuality)[0];
+  if (!video && streamedCombined) {
+    return { videoPath: streamedCombined.url, audioPath: "" };
+  }
+
+  const streamedVideo = formats
+    .filter((format) => hasVideo(format) && !hasAudio(format) && withinQuality(format))
+    .sort(byQuality)[0];
+  const streamedAudio = formats
+    .filter((format) => hasAudio(format) && !hasVideo(format))
+    .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+  if (!video && streamedVideo) {
+    return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "" };
+  }
 
   if (!video) {
     throw statusError("В источнике не найден видеопоток.", 500);
@@ -861,6 +951,32 @@ async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720"
   );
 
   await runCommand("ffmpeg", args, { timeout: 120000 });
+}
+
+async function captureFrame(videoPath, time, outputPath) {
+  const result = await runCommand("ffmpeg", [
+    "-y",
+    "-ss",
+    formatSeconds(time),
+    "-i",
+    videoPath,
+    "-frames:v",
+    "1",
+    "-vf",
+    "scale=160:90:force_original_aspect_ratio=increase,crop=160:90",
+    "-q:v",
+    "5",
+    "-f",
+    "image2",
+    "-update",
+    "1",
+    outputPath
+  ], { timeout: 45000 });
+  try {
+    await assertNonEmptyFile(outputPath);
+  } catch (error) {
+    throw statusError(result.stderr || error.message, 500);
+  }
 }
 
 async function getStreams(filePath) {
@@ -980,6 +1096,10 @@ function isDirectVideoUrl(value) {
   return /^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(value);
 }
 
+function cleanMediaUrl(value) {
+  return String(value || "").split(/\r?\n/).find((part) => /^https?:\/\//i.test(part.trim()))?.trim() || "";
+}
+
 function parseTime(value) {
   if (typeof value === "number") return value;
   if (typeof value !== "string") return 0;
@@ -990,6 +1110,10 @@ function parseTime(value) {
 
 function formatSeconds(seconds) {
   return seconds.toFixed(3);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function sanitizeTitle(value) {

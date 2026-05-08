@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -52,6 +52,9 @@ createServer(async (req, res) => {
       const body = await readJson(req);
       if (body.action === "probe") {
         return sendJson(res, await probeSource(body.url));
+      }
+      if (body.action === "frames") {
+        return sendJson(res, await createFrames(body));
       }
       return sendJson(res, await createClip(body), 201);
     }
@@ -139,6 +142,34 @@ async function createClip(input) {
     publicUrl: `${publicBaseUrl}/clips/${encodeURIComponent(outputName)}`,
     createdAt: new Date().toISOString()
   };
+}
+
+async function createFrames(input) {
+  const sourceUrl = validateUrl(input.url || input.sourceUrl);
+  const duration = Math.max(1, Number(input.duration || 30));
+  const count = Math.min(12, Math.max(3, Number(input.count || 9)));
+  const id = randomUUID();
+  const frames = [];
+
+  try {
+    for (let index = 0; index < count; index += 1) {
+      const time = clamp((duration * (index + 0.5)) / count, 0, Math.max(0, duration - 0.05));
+      const framePath = join(tempDir, `${id}-${index}.jpg`);
+      if (isDirectVideoUrl(sourceUrl.href)) {
+        await captureFrame(sourceUrl.href, time, framePath);
+      } else {
+        await captureSourceFrame(sourceUrl.href, time, framePath);
+      }
+      const data = await readFile(framePath);
+      frames.push(`data:image/jpeg;base64,${data.toString("base64")}`);
+      await unlink(framePath).catch(() => {});
+    }
+  } finally {
+    await cleanupTempFiles(id);
+  }
+
+  if (!frames.length) throw statusError("Не удалось построить кадры таймлайна.", 502);
+  return { frames };
 }
 
 async function discoverBehanceVideos(pageUrl) {
@@ -241,11 +272,20 @@ async function resolveMediaFiles(sourceUrl, quality) {
   if (isDirectVideoUrl(sourceUrl)) return { videoPath: sourceUrl, audioPath: "" };
 
   const info = await getYtdlpInfo(sourceUrl);
-  if (typeof info.url === "string" && /^https?:\/\//i.test(info.url)) {
-    return { videoPath: info.url, audioPath: "" };
+  const infoProtocol = String(info.protocol || "");
+  const cleanInfoUrl = cleanMediaUrl(info.url);
+  if (cleanInfoUrl && !infoProtocol.includes("m3u8") && !infoProtocol.includes("dash")) {
+    return { videoPath: cleanInfoUrl, audioPath: "" };
   }
 
-  const formats = Array.isArray(info.formats) ? info.formats.filter((format) => /^https?:\/\//i.test(format.url || "")) : [];
+  const requested = [
+    ...(Array.isArray(info.requested_downloads) ? info.requested_downloads : []),
+    ...(Array.isArray(info.requested_formats) ? info.requested_formats : []),
+    ...(Array.isArray(info.formats) ? info.formats : [])
+  ];
+  const formats = requested
+    .map((format) => ({ ...format, url: cleanMediaUrl(format.url) }))
+    .filter((format) => format.url);
   const maxHeight = getMaxHeight(quality);
   const withinQuality = (format) => !maxHeight || !format.height || Number(format.height) <= maxHeight;
   const hasVideo = (format) => Boolean(format.vcodec && format.vcodec !== "none");
@@ -271,6 +311,17 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const audio = formats
     .filter((format) => hasAudio(format) && !hasVideo(format) && isPlainHttpMedia(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+  const streamedCombined = formats
+    .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format))
+    .sort(byQuality)[0];
+  if (!video && streamedCombined) return { videoPath: streamedCombined.url, audioPath: "" };
+  const streamedVideo = formats
+    .filter((format) => hasVideo(format) && !hasAudio(format) && withinQuality(format))
+    .sort(byQuality)[0];
+  const streamedAudio = formats
+    .filter((format) => hasAudio(format) && !hasVideo(format))
+    .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+  if (!video && streamedVideo) return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "" };
   if (!video) throw statusError("В источнике не найден видеопоток.", 500);
   return { videoPath: video.url, audioPath: audio?.url || "" };
 }
@@ -300,6 +351,64 @@ async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720"
   if (maxHeight) args.push("-vf", `scale=-2:min(${maxHeight}\\,ih)`);
   args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-movflags", "+faststart", outputPath);
   await runCommand("ffmpeg", args, { timeout: 120000 });
+}
+
+async function captureFrame(videoPath, time, outputPath) {
+  const result = await runCommand("ffmpeg", [
+    "-y",
+    "-ss",
+    formatSeconds(time),
+    "-i",
+    videoPath,
+    "-frames:v",
+    "1",
+    "-vf",
+    "scale=160:90:force_original_aspect_ratio=increase,crop=160:90",
+    "-q:v",
+    "5",
+    "-f",
+    "image2",
+    "-update",
+    "1",
+    outputPath
+  ], { timeout: 45000 });
+  try {
+    await assertNonEmptyFile(outputPath);
+  } catch (error) {
+    throw statusError(result.stderr || error.message, 500);
+  }
+}
+
+async function captureSourceFrame(sourceUrl, time, outputPath) {
+  const id = randomUUID();
+  const sectionStart = Math.max(0, time - 0.25);
+  const sectionEnd = time + 0.75;
+  const outputTemplate = join(tempDir, `${id}.%(ext)s`);
+
+  try {
+    await runCommand("yt-dlp", [
+      "--no-playlist",
+      "--js-runtimes",
+      "deno",
+      "--remote-components",
+      "ejs:github",
+      "--download-sections",
+      `*${formatSeconds(sectionStart)}-${formatSeconds(sectionEnd)}`,
+      "--force-keyframes-at-cuts",
+      "-f",
+      "bv*[height<=480]/b[height<=480]/b",
+      "--merge-output-format",
+      "mp4",
+      "-o",
+      outputTemplate,
+      sourceUrl
+    ], { timeout: 120000 });
+
+    const samplePath = await findTempFile(id);
+    await captureFrame(samplePath, 0, outputPath);
+  } finally {
+    await cleanupTempFiles(id);
+  }
 }
 
 async function assertNonEmptyFile(filePath) {
@@ -390,6 +499,20 @@ async function cleanupOldClips() {
     }));
 }
 
+async function cleanupTempFiles(id) {
+  const entries = await readdir(tempDir, { withFileTypes: true }).catch(() => []);
+  await Promise.all(entries
+    .filter((entry) => entry.isFile() && (entry.name.startsWith(`${id}-`) || entry.name.startsWith(`${id}.`)))
+    .map((entry) => unlink(join(tempDir, entry.name)).catch(() => {})));
+}
+
+async function findTempFile(id) {
+  const entries = await readdir(tempDir, { withFileTypes: true });
+  const entry = entries.find((item) => item.isFile() && item.name.startsWith(`${id}.`));
+  if (!entry) throw statusError("Не удалось получить временный фрагмент для кадра.", 502);
+  return join(tempDir, entry.name);
+}
+
 async function readJson(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -474,6 +597,10 @@ function isDirectVideoUrl(value) {
   return /^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(value);
 }
 
+function cleanMediaUrl(value) {
+  return String(value || "").split(/\r?\n/).find((part) => /^https?:\/\//i.test(part.trim()))?.trim() || "";
+}
+
 function parseTime(value) {
   if (typeof value === "number") return value;
   if (typeof value !== "string") return 0;
@@ -484,6 +611,10 @@ function parseTime(value) {
 
 function formatSeconds(seconds) {
   return seconds.toFixed(3);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function normalizeQuality(value) {
