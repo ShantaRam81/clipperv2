@@ -38,7 +38,8 @@ init();
 
 async function init() {
   bindEvents();
-  await Promise.all([loadHealth(), loadLibrary()]);
+  await loadHealth();
+  renderClips([]);
   syncRange("range");
 }
 
@@ -63,7 +64,7 @@ function bindEvents() {
     scheduleProbe();
   });
   playPreviewBtn.addEventListener("click", playSelectedPreview);
-  refreshBtn.addEventListener("click", loadLibrary);
+  refreshBtn?.addEventListener("click", () => setMessage("Библиотека отключена: фрагменты сохраняются только на устройство."));
   form.addEventListener("submit", saveClip);
 }
 
@@ -134,8 +135,8 @@ async function probeSource() {
 async function saveClip(event) {
   event.preventDefault();
   try {
-    const outputDir = await chooseOutputFolder();
-    if (canSelectOutputFolder && !outputDir) return;
+    const fileHandle = await chooseSaveFileHandle(suggestedFileName(titleInput.value));
+    if (fileHandle === null) return;
 
     setMessage("Готовлю фрагмент...");
     const clip = await fetchJson("/api/clips", {
@@ -146,14 +147,10 @@ async function saveClip(event) {
         title: titleInput.value,
         start: startInput.value,
         end: endInput.value,
-        ...(outputDir ? { outputDir } : {}),
         quality: qualityInput.value
       })
     });
-    const downloadUrl = clip.id ? `/api/clips/${encodeURIComponent(clip.id)}/file` : clip.href;
-    triggerDownload(downloadUrl, clip.outputName || "reference-clip.mp4");
-    setMessage(outputDir ? `Сохранено в папку: ${clip.file || clip.outputName || clip.href}` : "Фрагмент готовится к скачиванию на это устройство.");
-    await loadLibrary();
+    await saveFileToDevice(clip.downloadUrl || clip.href, clip.outputName || "reference-clip.mp4", fileHandle);
   } catch (error) {
     setMessage(error.message);
   }
@@ -296,7 +293,7 @@ async function loadLibrary() {
 function renderClips(clips) {
   clipsEl.innerHTML = "";
   if (!clips.length) {
-    clipsEl.innerHTML = '<div class="message">Пока нет сохраненных фрагментов.</div>';
+    clipsEl.innerHTML = '<div class="message">История не хранится. Каждый фрагмент сохраняется сразу на ваше устройство.</div>';
     return;
   }
 
@@ -507,6 +504,48 @@ function setMessage(message) {
   messageEl.textContent = message || "";
 }
 
+async function chooseSaveFileHandle(fileName) {
+  if (!("showSaveFilePicker" in window)) return undefined;
+  setMessage("Выберите папку и имя файла...");
+  try {
+    return await window.showSaveFilePicker({
+      suggestedName: fileName || "reference-clip.mp4",
+      types: [{
+        description: "MP4 video",
+        accept: { "video/mp4": [".mp4"] }
+      }]
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      setMessage("Сохранение отменено.");
+      return null;
+    }
+    return undefined;
+  }
+}
+
+async function saveFileToDevice(url, fileName, fileHandle) {
+  if (!url) throw new Error("Сервер не вернул ссылку на готовый фрагмент.");
+
+  if (fileHandle) {
+    try {
+      setMessage("Скачиваю фрагмент...");
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Не удалось скачать готовый фрагмент.");
+      const writable = await fileHandle.createWritable();
+      await writable.write(await response.blob());
+      await writable.close();
+      setMessage("Фрагмент сохранен на устройство.");
+      return;
+    } catch (error) {
+      setMessage("Выбор папки недоступен, запускаю обычное скачивание...");
+    }
+  }
+
+  triggerDownload(url, fileName);
+  setMessage("Фрагмент скачивается на это устройство.");
+}
+
 function triggerDownload(url, fileName) {
   if (!url) return;
   const link = document.createElement("a");
@@ -516,6 +555,15 @@ function triggerDownload(url, fileName) {
   document.body.append(link);
   link.click();
   link.remove();
+}
+
+function suggestedFileName(title) {
+  const clean = String(title || "reference-clip")
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё]+/giu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70);
+  return `${clean || "reference-clip"}.mp4`;
 }
 
 async function fetchJson(url, options = {}) {

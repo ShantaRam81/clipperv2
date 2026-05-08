@@ -66,7 +66,7 @@ export async function handleRequest(req, res) {
     }
 
     if (req.method === "GET" && url.pathname === "/api/library") {
-      return sendJson(res, await readLibrary());
+      return sendJson(res, []);
     }
 
     if (req.method === "POST" && url.pathname === "/api/probe") {
@@ -87,6 +87,10 @@ export async function handleRequest(req, res) {
       const body = await readJson(req);
       const clip = await createClip(body);
       return sendJson(res, clip, 201);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/download") {
+      return serveDownload(url, res);
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/api/clips/") && url.pathname.endsWith("/file")) {
@@ -395,12 +399,10 @@ async function createClip(input) {
     createdAt: new Date().toISOString(),
     file: normalize(outputPath),
     outputName,
-    href: requestedOutputDir ? `/api/clips/${id}/file` : `/clips/${outputName}`
+    href: requestedOutputDir ? `/api/clips/${id}/file` : `/api/download?file=${encodeURIComponent(outputName)}&name=${encodeURIComponent(outputName)}`,
+    downloadUrl: requestedOutputDir ? `/api/clips/${id}/file` : `/api/download?file=${encodeURIComponent(outputName)}&name=${encodeURIComponent(outputName)}`
   };
 
-  const library = await readLibrary();
-  library.unshift(clip);
-  await writeLibrary(await pruneLibrary(library));
   return clip;
 }
 
@@ -445,10 +447,10 @@ async function callRemoteProcessor(payload) {
     throw statusError("Облачный обработчик не вернул ссылку на готовый фрагмент.", 502);
   }
 
-  const library = await readLibrary();
-  library.unshift(clip);
-  await writeLibrary(await pruneLibrary(library));
-  return clip;
+  return {
+    ...clip,
+    downloadUrl: `/api/download?url=${encodeURIComponent(clip.href)}&name=${encodeURIComponent(clip.outputName || "clip.mp4")}`
+  };
 }
 
 async function cleanupTempDir() {
@@ -524,6 +526,81 @@ async function proxyRemoteClip(clip, res) {
   Readable.fromWeb(response.body).pipe(res);
 }
 
+async function serveDownload(url, res) {
+  const remoteUrl = url.searchParams.get("url") || "";
+  const localFile = url.searchParams.get("file") || "";
+  const fileName = sanitizeDownloadName(url.searchParams.get("name") || localFile || "clip.mp4");
+
+  if (remoteUrl) {
+    return proxyDownloadUrl(remoteUrl, fileName, res);
+  }
+
+  if (!localFile) {
+    return sendJson(res, { error: "Download target is missing" }, 400);
+  }
+
+  const filePath = resolve(clipsDir, `./${localFile}`);
+  if (!isPathInside(resolve(clipsDir), filePath)) {
+    return sendJson(res, { error: "Forbidden" }, 403);
+  }
+
+  try {
+    await stat(filePath);
+    res.writeHead(200, {
+      "Content-Type": mimeTypes[extname(filePath)] || "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+      "Cache-Control": "no-store"
+    });
+    const stream = createReadStream(filePath);
+    stream.pipe(res);
+    res.on("finish", () => unlink(filePath).catch(() => {}));
+  } catch {
+    sendJson(res, { error: "Clip file not found" }, 404);
+  }
+}
+
+async function proxyDownloadUrl(remoteUrl, fileName, res) {
+  const target = validateUrl(remoteUrl);
+  if (!isAllowedRemoteDownload(target)) {
+    return sendJson(res, { error: "Forbidden download target" }, 403);
+  }
+
+  const response = await fetch(target.href);
+  if (!response.ok || !response.body) {
+    return sendJson(res, { error: "Remote clip file not found" }, response.status || 404);
+  }
+
+  res.writeHead(200, {
+    "Content-Type": response.headers.get("content-type") || "video/mp4",
+    "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+    "Cache-Control": "no-store"
+  });
+  Readable.fromWeb(response.body).pipe(res);
+  res.on("finish", () => deleteRemoteDownload(target).catch((error) => {
+    console.warn(`Could not delete remote clip: ${error.message}`);
+  }));
+}
+
+function isAllowedRemoteDownload(target) {
+  if (!remoteProcessorUrl) return false;
+  try {
+    const processor = new URL(remoteProcessorUrl);
+    return target.host === processor.host && target.pathname.startsWith("/clips/");
+  } catch {
+    return false;
+  }
+}
+
+async function deleteRemoteDownload(target) {
+  if (!remoteProcessorToken) return;
+  await fetch(target.href, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${remoteProcessorToken}`
+    }
+  }).catch(() => {});
+}
+
 async function discoverBehanceVideos(pageUrl) {
   const response = await fetch(pageUrl, {
     headers: {
@@ -566,6 +643,7 @@ async function discoverBehanceVideos(pageUrl) {
 
 async function enrichVideoOptions(options) {
   const enriched = [];
+  const fallback = [];
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index];
     try {
@@ -586,7 +664,7 @@ async function enrichVideoOptions(options) {
         canDownload: true
       });
     } catch {
-      enriched.push({
+      fallback.push({
         id: `${option.provider.toLowerCase()}-${index}`,
         url: option.url,
         provider: option.provider,
@@ -597,7 +675,7 @@ async function enrichVideoOptions(options) {
       });
     }
   }
-  return enriched;
+  return enriched.length ? enriched : fallback;
 }
 
 async function enrichAdobeCcvOption(option, index) {
@@ -905,6 +983,15 @@ function safeFileName(value) {
     .replace(/[^a-z0-9а-яё]+/giu, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 70) || "reference";
+}
+
+function sanitizeDownloadName(value) {
+  const clean = String(value || "clip.mp4")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return clean || "clip.mp4";
 }
 
 function detectProvider(value) {

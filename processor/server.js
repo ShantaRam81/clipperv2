@@ -42,6 +42,11 @@ createServer(async (req, res) => {
       return serveClip(url.pathname, res);
     }
 
+    if (req.method === "DELETE" && url.pathname.startsWith("/clips/")) {
+      authorize(req);
+      return sendJson(res, await deleteClip(url.pathname));
+    }
+
     if (req.method === "POST" && url.pathname === "/api/process") {
       authorize(req);
       const body = await readJson(req);
@@ -173,6 +178,7 @@ async function discoverBehanceVideos(pageUrl) {
 
 async function enrichVideoOptions(options) {
   const enriched = [];
+  const fallback = [];
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index];
     try {
@@ -192,7 +198,7 @@ async function enrichVideoOptions(options) {
         canDownload: true
       });
     } catch {
-      enriched.push({
+      fallback.push({
         id: `${option.provider.toLowerCase()}-${index}`,
         url: option.url,
         provider: option.provider,
@@ -203,7 +209,7 @@ async function enrichVideoOptions(options) {
       });
     }
   }
-  return enriched;
+  return enriched.length ? enriched : fallback;
 }
 
 async function enrichAdobeCcvOption(option, index) {
@@ -357,6 +363,16 @@ function serveClip(pathname, res) {
       "Cache-Control": "no-store"
     }))
     .pipe(res);
+}
+
+async function deleteClip(pathname) {
+  const fileName = decodeURIComponent(pathname.replace("/clips/", ""));
+  const filePath = resolve(clipsDir, `./${fileName}`);
+  if (!filePath.startsWith(resolve(clipsDir))) throw statusError("Forbidden", 403);
+  await unlink(filePath).catch((error) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+  return { deleted: true };
 }
 
 async function cleanupOldClips() {
