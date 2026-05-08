@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import ffmpegStaticPath from "ffmpeg-static";
-import ytdlpConstants from "yt-dlp-exec/src/constants.js";
+import ytdlpConstants from "youtube-dl-exec/src/constants.js";
 
 const require = createRequire(import.meta.url);
 const packagedFfmpegPath = ffmpegStaticPath || "";
@@ -943,12 +943,12 @@ function safeRequire(name) {
 
 function findPackagedYtdlp() {
   const exeName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
-  const packageDir = getPackageDir("yt-dlp-exec");
+  const packageDir = getPackageDir("youtube-dl-exec");
   const candidates = [
     packageDir ? join(packageDir, "bin", exeName) : "",
     packageDir ? join(packageDir, "bin", "yt-dlp") : "",
-    join(rootDir, "node_modules", "yt-dlp-exec", "bin", exeName),
-    join(rootDir, "node_modules", "yt-dlp-exec", "bin", "yt-dlp")
+    join(rootDir, "node_modules", "youtube-dl-exec", "bin", exeName),
+    join(rootDir, "node_modules", "youtube-dl-exec", "bin", "yt-dlp")
   ].filter(Boolean);
   return candidates.find((candidate) => existsSync(candidate)) || "";
 }

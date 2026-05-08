@@ -7,7 +7,7 @@
       "config": {
         "includeFiles": [
           "node_modules/ffmpeg-static/ffmpeg",
-          "node_modules/yt-dlp-exec/bin/yt-dlp"
+          "node_modules/youtube-dl-exec/bin/yt-dlp"
         ]
       }
     },
