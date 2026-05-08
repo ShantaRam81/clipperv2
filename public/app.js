@@ -18,6 +18,9 @@ const sourceMetaEl = document.querySelector("#sourceMeta");
 const refreshBtn = document.querySelector("#refreshBtn");
 const videoOptionsEl = document.querySelector("#videoOptions");
 const qualityInput = document.querySelector("#quality");
+const tagInput = document.querySelector("#tagInput");
+const tagSuggestionsEl = document.querySelector("#tagSuggestions");
+const tagChipsEl = document.querySelector("#tagChips");
 const filmstripEl = document.querySelector("#filmstrip");
 const filmFramesEl = document.querySelector("#filmFrames");
 const timeBubbleEl = document.querySelector("#timeBubble");
@@ -33,11 +36,18 @@ let probeToken = 0;
 let activeDrag = null;
 let currentFilmstripUrl = "";
 let canSelectOutputFolder = true;
+let selectedTags = [];
+let savedTags = [];
+let showingAllOptions = false;
+let currentOptions = [];
+let isSaving = false;
 
 init();
 
 async function init() {
   bindEvents();
+  loadSavedTags();
+  renderTags();
   await loadHealth();
   renderClips([]);
   syncRange("range");
@@ -59,10 +69,14 @@ function bindEvents() {
     probeToken += 1;
     selectedSourceUrl = "";
     selectedPreviewUrl = "";
+    showingAllOptions = false;
+    currentOptions = [];
     videoOptionsEl.hidden = true;
     previewEl.hidden = true;
     scheduleProbe();
   });
+  tagInput?.addEventListener("keydown", handleTagKeydown);
+  tagInput?.addEventListener("change", () => addTag(tagInput.value));
   playPreviewBtn.addEventListener("click", playSelectedPreview);
   refreshBtn?.addEventListener("click", () => setMessage("Библиотека отключена: фрагменты сохраняются только на устройство."));
   form.addEventListener("submit", saveClip);
@@ -134,8 +148,14 @@ async function probeSource() {
 
 async function saveClip(event) {
   event.preventDefault();
+  if (isSaving) return;
+  isSaving = true;
+  setSaveBusy(true);
+
   try {
-    const fileHandle = await chooseSaveFileHandle(suggestedFileName(titleInput.value));
+    const fileName = suggestedFileName(titleInput.value, selectedTags);
+    rememberSelectedTags();
+    const fileHandle = await chooseSaveFileHandle(fileName);
     if (fileHandle === null) return;
 
     setMessage("Готовлю фрагмент...");
@@ -144,24 +164,29 @@ async function saveClip(event) {
       body: JSON.stringify({
         url: urlInput.value,
         sourceUrl: selectedSourceUrl || urlInput.value,
-        title: titleInput.value,
+        title: fileName.replace(/\.mp4$/i, ""),
         start: startInput.value,
         end: endInput.value,
         quality: qualityInput.value
       })
     });
-    await saveFileToDevice(clip.downloadUrl || clip.href, clip.outputName || "reference-clip.mp4", fileHandle);
+    await saveFileToDevice(clip.downloadUrl || clip.href, fileName, fileHandle);
   } catch (error) {
     setMessage(error.message);
+  } finally {
+    isSaving = false;
+    setSaveBusy(false);
   }
 }
 
 function renderVideoOptions(options) {
+  currentOptions = options;
   videoOptionsEl.innerHTML = "";
   videoOptionsEl.hidden = !options.length;
   if (!options.length) return;
 
-  for (const [index, option] of options.entries()) {
+  const visibleOptions = showingAllOptions ? options : options.slice(0, 5);
+  for (const [index, option] of visibleOptions.entries()) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = `video-option${index === 0 ? " active" : ""}`;
@@ -187,6 +212,28 @@ function renderVideoOptions(options) {
       setMessage(`Выбрано: ${option.title || option.provider}`);
     });
     videoOptionsEl.append(item);
+  }
+
+  if (options.length > visibleOptions.length) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "video-option more-option";
+    more.textContent = `Показать все видео (${options.length})`;
+    more.addEventListener("click", () => {
+      showingAllOptions = true;
+      renderVideoOptions(currentOptions);
+    });
+    videoOptionsEl.append(more);
+  } else if (options.length > 5) {
+    const less = document.createElement("button");
+    less.type = "button";
+    less.className = "video-option more-option";
+    less.textContent = "Свернуть список";
+    less.addEventListener("click", () => {
+      showingAllOptions = false;
+      renderVideoOptions(currentOptions);
+    });
+    videoOptionsEl.append(less);
   }
 }
 
@@ -504,6 +551,13 @@ function setMessage(message) {
   messageEl.textContent = message || "";
 }
 
+function setSaveBusy(busy) {
+  const button = document.querySelector("#saveBtn");
+  if (!button) return;
+  button.disabled = busy;
+  button.textContent = busy ? "Готовлю файл..." : "Сохранить фрагмент";
+}
+
 async function chooseSaveFileHandle(fileName) {
   if (!("showSaveFilePicker" in window)) return undefined;
   setMessage("Выберите папку и имя файла...");
@@ -538,7 +592,7 @@ async function saveFileToDevice(url, fileName, fileHandle) {
       setMessage("Фрагмент сохранен на устройство.");
       return;
     } catch (error) {
-      setMessage("Выбор папки недоступен, запускаю обычное скачивание...");
+      throw new Error(error.message || "Не удалось записать файл в выбранную папку.");
     }
   }
 
@@ -557,13 +611,84 @@ function triggerDownload(url, fileName) {
   link.remove();
 }
 
-function suggestedFileName(title) {
-  const clean = String(title || "reference-clip")
+function suggestedFileName(title, tags = []) {
+  const tagPrefix = tags.map(slugFilePart).filter(Boolean).join("_");
+  const clean = slugFilePart(title || "reference-clip");
+  return `${tagPrefix ? `${tagPrefix}__` : ""}${clean || "reference-clip"}.mp4`;
+}
+
+function slugFilePart(value) {
+  return String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9а-яё]+/giu, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 70);
-  return `${clean || "reference-clip"}.mp4`;
+}
+
+function handleTagKeydown(event) {
+  if (event.key !== "Enter" && event.key !== ",") return;
+  event.preventDefault();
+  addTag(tagInput.value);
+}
+
+function addTag(value) {
+  const tag = sanitizeTag(value);
+  if (!tag) return;
+  if (!selectedTags.includes(tag)) selectedTags.push(tag);
+  tagInput.value = "";
+  renderTags();
+}
+
+function removeTag(tag) {
+  selectedTags = selectedTags.filter((item) => item !== tag);
+  renderTags();
+}
+
+function renderTags() {
+  if (!tagChipsEl) return;
+  tagChipsEl.innerHTML = "";
+  for (const tag of selectedTags) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = tag;
+    button.title = "Убрать тег";
+    button.addEventListener("click", () => removeTag(tag));
+    tagChipsEl.append(button);
+  }
+
+  if (!tagSuggestionsEl) return;
+  tagSuggestionsEl.innerHTML = "";
+  for (const tag of savedTags) {
+    const option = document.createElement("option");
+    option.value = tag;
+    tagSuggestionsEl.append(option);
+  }
+}
+
+function loadSavedTags() {
+  try {
+    savedTags = JSON.parse(localStorage.getItem("referenceClipperTags") || "[]")
+      .map(sanitizeTag)
+      .filter(Boolean);
+  } catch {
+    savedTags = [];
+  }
+}
+
+function rememberSelectedTags() {
+  if (!selectedTags.length) return;
+  savedTags = [...new Set([...selectedTags, ...savedTags])].slice(0, 40);
+  localStorage.setItem("referenceClipperTags", JSON.stringify(savedTags));
+  renderTags();
+}
+
+function sanitizeTag(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^#+/, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9а-яё_-]+/giu, "")
+    .slice(0, 28);
 }
 
 async function fetchJson(url, options = {}) {

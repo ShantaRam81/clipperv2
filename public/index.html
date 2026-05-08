@@ -91,6 +91,13 @@
             <input id="title" type="text" placeholder="Например: kinetic typography / logo reveal" required>
           </label>
 
+          <label class="field full">
+            <span>Теги для имени файла</span>
+            <input id="tagInput" type="text" list="tagSuggestions" placeholder="Например: car, ui, motion. Enter добавляет тег">
+            <datalist id="tagSuggestions"></datalist>
+          </label>
+          <div id="tagChips" class="tag-chips" aria-label="Выбранные теги"></div>
+
           <div class="save-row">
             <label class="field">
               <span>Качество</span>

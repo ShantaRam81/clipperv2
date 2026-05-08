@@ -279,6 +279,15 @@ select:focus {
   font-weight: 700;
 }
 
+.more-option {
+  display: block;
+  min-height: 42px;
+  padding: 0 14px;
+  color: var(--accent);
+  font-weight: 700;
+  text-align: center;
+}
+
 .timeline-block {
   display: grid;
   gap: 12px;
@@ -476,6 +485,23 @@ input[type="range"]::-moz-range-thumb {
   grid-template-columns: minmax(176px, 240px) minmax(220px, 1fr);
 }
 
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 0;
+}
+
+.tag-chips button {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--accent-muted);
+  color: #baf6c8;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 #saveBtn {
   height: 46px;
   border-radius: 8px;
@@ -487,6 +513,11 @@ input[type="range"]::-moz-range-thumb {
 
 #saveBtn:hover {
   background: #91f2aa;
+}
+
+#saveBtn:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
 .library {
