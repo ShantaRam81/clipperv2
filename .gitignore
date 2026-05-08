@@ -1,0 +1,11 @@
+node_modules/
+.vercel/
+
+# Runtime storage and generated media
+storage/*
+!storage/.gitkeep
+
+# Local logs and editor files
+*.log
+.DS_Store
+Thumbs.db

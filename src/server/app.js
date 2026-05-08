@@ -1,13 +1,13 @@
 ﻿import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rm, unlink, writeFile, stat } from "node:fs/promises";
 import { createReadStream, existsSync, readdirSync } from "node:fs";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 const rootDir = process.cwd();
 const publicDir = join(rootDir, "public");
-const storageDir = join(rootDir, "storage");
+const storageDir = process.env.STORAGE_DIR || (process.env.VERCEL ? join("/tmp", "reference-clipper") : join(rootDir, "storage"));
 const clipsDir = join(storageDir, "clips");
 const tempDir = join(storageDir, "tmp");
 const libraryPath = join(storageDir, "library.json");
@@ -18,6 +18,7 @@ const remoteProcessorUrl = process.env.CLIPPER_PROCESSOR_URL || "";
 const remoteProcessorToken = process.env.CLIPPER_PROCESSOR_TOKEN || "";
 const commandPaths = {
   "ffmpeg": process.env.FFMPEG_PATH,
+  "ffprobe": process.env.FFPROBE_PATH,
   "yt-dlp": process.env.YTDLP_PATH
 };
 
@@ -37,7 +38,17 @@ const mimeTypes = {
 export async function startServer(options = {}) {
   await ensureStorage();
   const listenPort = Number(options.port || port);
-  const server = createServer(async (req, res) => {
+  const server = createServer(handleRequest);
+
+  return new Promise((resolveServer) => {
+    server.listen(listenPort, () => {
+      console.log(`Reference Clipper is running at http://localhost:${listenPort}`);
+      resolveServer(server);
+    });
+  });
+}
+
+export async function handleRequest(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -59,10 +70,19 @@ export async function startServer(options = {}) {
       return sendJson(res, await createPreview(body.url));
     }
 
+    if (req.method === "POST" && url.pathname === "/api/select-folder") {
+      return sendJson(res, await selectOutputFolder());
+    }
+
     if (req.method === "POST" && url.pathname === "/api/clips") {
       const body = await readJson(req);
       const clip = await createClip(body);
       return sendJson(res, clip, 201);
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/clips/") && url.pathname.endsWith("/file")) {
+      const id = decodeURIComponent(url.pathname.replace("/api/clips/", "").replace("/file", ""));
+      return serveLibraryClip(id, res);
     }
 
     if (req.method === "DELETE" && url.pathname.startsWith("/api/clips/")) {
@@ -82,17 +102,9 @@ export async function startServer(options = {}) {
   } catch (error) {
     sendJson(res, { error: error.message || "Unexpected error" }, error.status || 500);
   }
-  });
-
-  return new Promise((resolveServer) => {
-    server.listen(listenPort, () => {
-      console.log(`Reference Clipper is running at http://localhost:${listenPort}`);
-      resolveServer(server);
-    });
-  });
 }
 
-async function ensureStorage() {
+export async function ensureStorage() {
   await mkdir(publicDir, { recursive: true });
   await mkdir(clipsDir, { recursive: true });
   await mkdir(tempDir, { recursive: true });
@@ -106,7 +118,7 @@ async function ensureStorage() {
 async function serveStatic(pathname, res) {
   const requested = pathname === "/" ? "/index.html" : pathname;
   const filePath = resolve(publicDir, `.${decodeURIComponent(requested)}`);
-  if (!filePath.startsWith(resolve(publicDir))) {
+  if (!isPathInside(resolve(publicDir), filePath)) {
     return sendJson(res, { error: "Forbidden" }, 403);
   }
 
@@ -122,7 +134,7 @@ async function serveStatic(pathname, res) {
 async function serveClip(pathname, res) {
   const fileName = decodeURIComponent(pathname.replace("/clips/", ""));
   const filePath = resolve(clipsDir, `./${fileName}`);
-  if (!filePath.startsWith(resolve(clipsDir))) {
+  if (!isPathInside(resolve(clipsDir), filePath)) {
     return sendJson(res, { error: "Forbidden" }, 403);
   }
 
@@ -136,7 +148,7 @@ async function serveClip(pathname, res) {
 }
 
 async function getHealth() {
-  const [ffmpeg, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("yt-dlp")]);
+  const [ffmpeg, ffprobe, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("ffprobe"), hasCommand("yt-dlp")]);
   return {
     ok: true,
     processing: {
@@ -147,11 +159,73 @@ async function getHealth() {
     dependencies: {
       node: process.version,
       ffmpeg,
+      ffprobe,
       "yt-dlp": ytdlp
     },
     storage: {
       clipsDir
     }
+  };
+}
+
+async function selectOutputFolder() {
+  try {
+    return await selectOutputFolderWithShell();
+  } catch {
+    return await selectOutputFolderWithPowerShell();
+  }
+}
+
+async function selectOutputFolderWithShell() {
+  const scriptPath = join(tempDir, `select-folder-${randomUUID()}.vbs`);
+  const script = [
+    'Set shell = CreateObject("Shell.Application")',
+    'Set folder = shell.BrowseForFolder(0, "Select folder for clip export", &H00000041, 17)',
+    "If Not folder Is Nothing Then",
+    "  WScript.Echo folder.Self.Path",
+    "End If"
+  ].join("\r\n");
+
+  await writeFile(scriptPath, script, "utf8");
+  try {
+    const result = await runCommand("cscript.exe", ["//nologo", scriptPath], { timeout: 120000 });
+    const path = result.stdout.trim();
+    return {
+      path,
+      selected: Boolean(path)
+    };
+  } finally {
+    try {
+      await unlink(scriptPath);
+    } catch {
+      // temporary dialog script cleanup is best-effort
+    }
+  }
+}
+
+async function selectOutputFolderWithPowerShell() {
+  const script = `
+Add-Type -AssemblyName System.Windows.Forms
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = "Выберите папку для сохранения клипов"
+$dialog.ShowNewFolderButton = $true
+$result = $dialog.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+  Write-Output $dialog.SelectedPath
+}
+`;
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
+  const result = await runCommand("powershell.exe", [
+    "-NoProfile",
+    "-STA",
+    "-EncodedCommand",
+    encoded
+  ], { timeout: 300000 });
+  const path = result.stdout.trim();
+  return {
+    path,
+    selected: Boolean(path)
   };
 }
 
@@ -234,6 +308,7 @@ async function createClip(input) {
   const end = parseTime(input.end);
   const duration = Math.max(0, end - start);
   const quality = normalizeQuality(input.quality);
+  const requestedOutputDir = normalizeOutputDir(input.outputDir);
 
   if (duration <= 0) {
     throw statusError("Конец фрагмента должен быть позже начала.", 400);
@@ -254,33 +329,30 @@ async function createClip(input) {
     });
   }
 
-  const [ffmpeg, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("yt-dlp")]);
-  if (!ffmpeg || !ytdlp) {
-    throw statusError(`Для экспорта нужны зависимости: ${!ytdlp ? "yt-dlp " : ""}${!ffmpeg ? "ffmpeg" : ""}`.trim(), 409);
+  const [ffmpeg, ffprobe, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("ffprobe"), hasCommand("yt-dlp")]);
+  if (!ffmpeg || !ffprobe || !ytdlp) {
+    throw statusError(`Для экспорта нужны зависимости: ${!ytdlp ? "yt-dlp " : ""}${!ffmpeg ? "ffmpeg " : ""}${!ffprobe ? "ffprobe" : ""}`.trim(), 409);
   }
 
   const id = randomUUID();
   const outputName = `${safeFileName(title)}-${id.slice(0, 8)}.mp4`;
-  const outputPath = join(clipsDir, outputName);
-  const sourcePath = join(tempDir, `${id}.source.%(ext)s`);
+  const outputDir = requestedOutputDir || clipsDir;
+  await mkdir(outputDir, { recursive: true });
+  const outputPath = join(outputDir, outputName);
 
   try {
-    await runCommand("yt-dlp", [
-      "--no-playlist",
-      "-f",
-      getYtdlpFormat(quality),
-      "--merge-output-format",
-      "mp4",
-      "-o",
-      sourcePath,
-      sourceUrl.href
-    ], { timeout: 120000 });
-
-    const mediaFiles = await findDownloadedMediaFiles(id);
+    const mediaFiles = await resolveMediaFiles(sourceUrl.href, quality);
     await cutMedia(mediaFiles, start, duration, outputPath, quality);
     await assertVideoFile(outputPath);
-  } finally {
-    await cleanupTempFiles(id);
+  } catch (error) {
+    try {
+      await unlink(outputPath);
+    } catch (cleanupError) {
+      if (cleanupError.code !== "ENOENT") {
+        console.warn(`Could not remove failed output: ${cleanupError.message}`);
+      }
+    }
+    throw error;
   }
 
   const clip = {
@@ -295,7 +367,7 @@ async function createClip(input) {
     createdAt: new Date().toISOString(),
     file: normalize(outputPath),
     outputName,
-    href: `/clips/${outputName}`
+    href: requestedOutputDir ? `/api/clips/${id}/file` : `/clips/${outputName}`
   };
 
   const library = await readLibrary();
@@ -377,6 +449,25 @@ async function deleteClip(id) {
   await removeLocalClipFile(clip);
 
   return { deleted: true, id };
+}
+
+async function serveLibraryClip(id, res) {
+  const library = await readLibrary();
+  const clip = library.find((item) => item.id === id);
+  if (!clip?.file) {
+    return sendJson(res, { error: "Clip not found" }, 404);
+  }
+
+  try {
+    await stat(clip.file);
+    res.writeHead(200, {
+      "Content-Type": mimeTypes[extname(clip.file)] || "application/octet-stream",
+      "Content-Disposition": `inline; filename="${encodeURIComponent(clip.outputName || "clip.mp4")}"`
+    });
+    createReadStream(clip.file).pipe(res);
+  } catch {
+    sendJson(res, { error: "Clip file not found" }, 404);
+  }
 }
 
 async function discoverBehanceVideos(pageUrl) {
@@ -525,30 +616,51 @@ function isGif(value) {
   return /\.gif(?:\?|$)/i.test(value) || /giphy\.com/i.test(value);
 }
 
-async function findDownloadedMediaFiles(id) {
-  const { readdir } = await import("node:fs/promises");
-  const files = await readdir(tempDir);
-  const candidates = files
-    .filter((file) => file.startsWith(`${id}.source.`))
-    .map((file) => join(tempDir, file));
-
-  if (!candidates.length) {
-    throw statusError("yt-dlp не создал исходные файлы.", 500);
+async function resolveMediaFiles(sourceUrl, quality) {
+  if (isDirectVideoUrl(sourceUrl)) {
+    return { videoPath: sourceUrl, audioPath: "" };
   }
 
-  let videoPath = "";
-  let audioPath = "";
-  for (const candidate of candidates) {
-    const streams = await getStreams(candidate);
-    if (!videoPath && streams.includes("video")) videoPath = candidate;
-    if (!audioPath && streams.includes("audio")) audioPath = candidate;
+  const result = await runCommand("yt-dlp", ["--dump-json", "--no-playlist", sourceUrl], { timeout: 30000 });
+  const info = JSON.parse(result.stdout);
+  if (typeof info.url === "string" && /^https?:\/\//i.test(info.url)) {
+    return { videoPath: info.url, audioPath: "" };
   }
 
-  if (!videoPath) {
-    throw statusError("В загруженном источнике не найден видеопоток.", 500);
+  const formats = Array.isArray(info.formats) ? info.formats.filter((format) => /^https?:\/\//i.test(format.url || "")) : [];
+  const maxHeight = getMaxHeight(quality);
+  const withinQuality = (format) => !maxHeight || !format.height || Number(format.height) <= maxHeight;
+  const hasVideo = (format) => Boolean(format.vcodec && format.vcodec !== "none");
+  const hasAudio = (format) => Boolean(format.acodec && format.acodec !== "none");
+  const isPlainHttpMedia = (format) => {
+    const protocol = String(format.protocol || "");
+    return !protocol.includes("m3u8") && !protocol.includes("dash");
+  };
+  const byQuality = (a, b) => {
+    const aScore = Number(a.height || 0) * 100000 + Number(a.tbr || a.vbr || a.abr || 0);
+    const bScore = Number(b.height || 0) * 100000 + Number(b.tbr || b.vbr || b.abr || 0);
+    return bScore - aScore;
+  };
+
+  const combined = formats
+    .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
+    .sort(byQuality)[0];
+  if (combined) {
+    return { videoPath: combined.url, audioPath: "" };
   }
 
-  return { videoPath, audioPath };
+  const video = formats
+    .filter((format) => hasVideo(format) && !hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
+    .sort(byQuality)[0];
+  const audio = formats
+    .filter((format) => hasAudio(format) && !hasVideo(format) && isPlainHttpMedia(format))
+    .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+
+  if (!video) {
+    throw statusError("В источнике не найден видеопоток.", 500);
+  }
+
+  return { videoPath: video.url, audioPath: audio?.url || "" };
 }
 
 async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720") {
@@ -609,6 +721,16 @@ function normalizeQuality(value) {
   return allowed.has(quality) ? quality : "720";
 }
 
+function normalizeOutputDir(value) {
+  if (!value || !String(value).trim()) return "";
+  const resolved = resolve(String(value).trim().replace(/^"|"$/g, ""));
+  const parsedRoot = resolve(resolved).slice(0, 3);
+  if (!/^[a-z]:\\/i.test(parsedRoot)) {
+    throw statusError("Укажите полный путь папки, например C:\\Users\\BBulat\\Videos\\Refs.", 400);
+  }
+  return resolved;
+}
+
 function getYtdlpFormat(quality) {
   if (quality === "source") return "bv*+ba/b";
   return `bv*[height<=${quality}]+ba/b[height<=${quality}]/b`;
@@ -650,12 +772,17 @@ async function pruneLibrary(library) {
 async function removeLocalClipFile(clip) {
   if (!clip.file) return;
   const filePath = resolve(clip.file);
-  if (!filePath.startsWith(resolve(clipsDir))) return;
+  if (!isPathInside(resolve(clipsDir), filePath)) return;
   try {
     await unlink(filePath);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+}
+
+function isPathInside(baseDir, targetPath) {
+  const relation = relative(baseDir, targetPath);
+  return relation === "" || (!relation.startsWith("..") && !isAbsolute(relation));
 }
 
 async function readJson(req) {
@@ -679,6 +806,10 @@ function validateUrl(value) {
   } catch {
     throw statusError("Ссылка должна быть валидным http/https URL.", 400);
   }
+}
+
+function isDirectVideoUrl(value) {
+  return /^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(value);
 }
 
 function parseTime(value) {
@@ -715,7 +846,7 @@ function detectProvider(value) {
 
 function hasCommand(command) {
   return new Promise((resolveCheck) => {
-    const versionArgs = command === "ffmpeg" ? ["-version"] : ["--version"];
+    const versionArgs = command === "yt-dlp" ? ["--version"] : ["-version"];
     let child;
     try {
       child = spawn(resolveCommand(command), versionArgs, { shell: false });

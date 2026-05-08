@@ -82,6 +82,16 @@ function scheduleProbe() {
   probeTimer = setTimeout(() => probeSource(), 650);
 }
 
+async function chooseOutputFolder() {
+  setMessage("Открываю выбор папки...");
+  const data = await fetchJson("/api/select-folder", { method: "POST" });
+  if (!data.selected) {
+    setMessage("Сохранение отменено: папка не выбрана.");
+    return "";
+  }
+  return data.path;
+}
+
 async function loadHealth() {
   const health = await fetchJson("/api/health");
   const missing = Object.entries(health.dependencies)
@@ -121,6 +131,9 @@ async function probeSource() {
 async function saveClip(event) {
   event.preventDefault();
   try {
+    const outputDir = await chooseOutputFolder();
+    if (!outputDir) return;
+
     setMessage("Готовлю фрагмент...");
     const clip = await fetchJson("/api/clips", {
       method: "POST",
@@ -130,10 +143,11 @@ async function saveClip(event) {
         title: titleInput.value,
         start: startInput.value,
         end: endInput.value,
+        outputDir,
         quality: qualityInput.value
       })
     });
-    setMessage(`Сохранено: ${clip.outputName || clip.href}`);
+    setMessage(`Сохранено в папку: ${clip.file || clip.outputName || clip.href}`);
     await loadLibrary();
   } catch (error) {
     setMessage(error.message);
@@ -232,6 +246,7 @@ async function buildVideoFilmstrip(url) {
   }
 
   if (currentFilmstripUrl !== url) return;
+  updateGeneratedThumbnail(frames[0]);
   filmFramesEl.innerHTML = "";
   for (const src of frames) {
     const frame = document.createElement("span");
@@ -239,6 +254,13 @@ async function buildVideoFilmstrip(url) {
     frame.style.setProperty("--thumb", `url("${src}")`);
     filmFramesEl.append(frame);
   }
+}
+
+function updateGeneratedThumbnail(src) {
+  if (!src) return;
+  thumbnailEl.src = src;
+  const activeOptionImage = videoOptionsEl.querySelector(".video-option.active img");
+  if (activeOptionImage) activeOptionImage.src = src;
 }
 
 function waitForVideoEvent(video, eventName, timeout) {
