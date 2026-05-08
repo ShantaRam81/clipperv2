@@ -4,6 +4,10 @@ import { createReadStream, existsSync, readdirSync } from "node:fs";
 import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const packagedFfmpegPath = safeRequire("ffmpeg-static");
 
 const rootDir = process.cwd();
 const publicDir = join(rootDir, "public");
@@ -17,9 +21,9 @@ const clipTtlHours = Number(process.env.CLIP_TTL_HOURS || 0);
 const remoteProcessorUrl = process.env.CLIPPER_PROCESSOR_URL || "";
 const remoteProcessorToken = process.env.CLIPPER_PROCESSOR_TOKEN || "";
 const commandPaths = {
-  "ffmpeg": process.env.FFMPEG_PATH,
+  "ffmpeg": process.env.FFMPEG_PATH || packagedFfmpegPath,
   "ffprobe": process.env.FFPROBE_PATH,
-  "yt-dlp": process.env.YTDLP_PATH
+  "yt-dlp": process.env.YTDLP_PATH || findPackagedYtdlp()
 };
 
 const mimeTypes = {
@@ -154,12 +158,12 @@ async function getHealth() {
     processing: {
       mode: remoteProcessorUrl ? "remote" : "local",
       maxLocalClips,
-      clipTtlHours
+      clipTtlHours,
+      canSelectOutputFolder: !process.env.VERCEL
     },
     dependencies: {
       node: process.version,
       ffmpeg,
-      ffprobe,
       "yt-dlp": ytdlp
     },
     storage: {
@@ -169,6 +173,14 @@ async function getHealth() {
 }
 
 async function selectOutputFolder() {
+  if (process.env.VERCEL) {
+    return {
+      selected: false,
+      path: "",
+      message: "На Vercel нельзя выбрать локальную папку. Фрагмент будет доступен по ссылке после сохранения."
+    };
+  }
+
   try {
     return await selectOutputFolderWithShell();
   } catch {
@@ -329,9 +341,9 @@ async function createClip(input) {
     });
   }
 
-  const [ffmpeg, ffprobe, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("ffprobe"), hasCommand("yt-dlp")]);
-  if (!ffmpeg || !ffprobe || !ytdlp) {
-    throw statusError(`Для экспорта нужны зависимости: ${!ytdlp ? "yt-dlp " : ""}${!ffmpeg ? "ffmpeg " : ""}${!ffprobe ? "ffprobe" : ""}`.trim(), 409);
+  const [ffmpeg, ytdlp] = await Promise.all([hasCommand("ffmpeg"), hasCommand("yt-dlp")]);
+  if (!ffmpeg || !ytdlp) {
+    throw statusError(`Для экспорта нужны зависимости: ${!ytdlp ? "yt-dlp " : ""}${!ffmpeg ? "ffmpeg" : ""}`.trim(), 409);
   }
 
   const id = randomUUID();
@@ -343,7 +355,7 @@ async function createClip(input) {
   try {
     const mediaFiles = await resolveMediaFiles(sourceUrl.href, quality);
     await cutMedia(mediaFiles, start, duration, outputPath, quality);
-    await assertVideoFile(outputPath);
+    await assertNonEmptyFile(outputPath);
   } catch (error) {
     try {
       await unlink(outputPath);
@@ -708,10 +720,10 @@ async function getStreams(filePath) {
   return result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
 
-async function assertVideoFile(filePath) {
-  const streams = await getStreams(filePath);
-  if (!streams.includes("video")) {
-    throw statusError("Фрагмент создан без видеопотока. Файл не сохранен как готовый клип.", 500);
+async function assertNonEmptyFile(filePath) {
+  const info = await stat(filePath);
+  if (!info.size) {
+    throw statusError("Фрагмент создан пустым файлом. Файл не сохранен как готовый клип.", 500);
   }
 }
 
@@ -902,6 +914,23 @@ function resolveCommand(command) {
   ];
   commandPaths[command] = candidates.find((candidate) => existsSync(candidate)) || command;
   return commandPaths[command];
+}
+
+function safeRequire(name) {
+  try {
+    return require(name);
+  } catch {
+    return "";
+  }
+}
+
+function findPackagedYtdlp() {
+  const exeName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+  const candidates = [
+    join(rootDir, "node_modules", "yt-dlp-exec", "bin", exeName),
+    join(rootDir, "node_modules", "yt-dlp-exec", "bin", "yt-dlp")
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) || "";
 }
 
 function findWinGetPackageCommands(localAppData, command) {

@@ -32,6 +32,7 @@ let probeTimer = 0;
 let probeToken = 0;
 let activeDrag = null;
 let currentFilmstripUrl = "";
+let canSelectOutputFolder = true;
 
 init();
 
@@ -83,6 +84,7 @@ function scheduleProbe() {
 }
 
 async function chooseOutputFolder() {
+  if (!canSelectOutputFolder) return "";
   setMessage("Открываю выбор папки...");
   const data = await fetchJson("/api/select-folder", { method: "POST" });
   if (!data.selected) {
@@ -94,6 +96,7 @@ async function chooseOutputFolder() {
 
 async function loadHealth() {
   const health = await fetchJson("/api/health");
+  canSelectOutputFolder = Boolean(health.processing?.canSelectOutputFolder);
   const missing = Object.entries(health.dependencies)
     .filter(([name, ok]) => name !== "node" && !ok)
     .map(([name]) => name);
@@ -132,7 +135,7 @@ async function saveClip(event) {
   event.preventDefault();
   try {
     const outputDir = await chooseOutputFolder();
-    if (!outputDir) return;
+    if (canSelectOutputFolder && !outputDir) return;
 
     setMessage("Готовлю фрагмент...");
     const clip = await fetchJson("/api/clips", {
@@ -143,11 +146,11 @@ async function saveClip(event) {
         title: titleInput.value,
         start: startInput.value,
         end: endInput.value,
-        outputDir,
+        ...(outputDir ? { outputDir } : {}),
         quality: qualityInput.value
       })
     });
-    setMessage(`Сохранено в папку: ${clip.file || clip.outputName || clip.href}`);
+    setMessage(outputDir ? `Сохранено в папку: ${clip.file || clip.outputName || clip.href}` : `Фрагмент готов: ${clip.outputName || clip.href}`);
     await loadLibrary();
   } catch (error) {
     setMessage(error.message);
