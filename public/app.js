@@ -150,7 +150,9 @@ async function saveClip(event) {
         quality: qualityInput.value
       })
     });
-    setMessage(outputDir ? `Сохранено в папку: ${clip.file || clip.outputName || clip.href}` : `Фрагмент готов: ${clip.outputName || clip.href}`);
+    const downloadUrl = clip.id ? `/api/clips/${encodeURIComponent(clip.id)}/file` : clip.href;
+    triggerDownload(downloadUrl, clip.outputName || "reference-clip.mp4");
+    setMessage(outputDir ? `Сохранено в папку: ${clip.file || clip.outputName || clip.href}` : "Фрагмент готовится к скачиванию на это устройство.");
     await loadLibrary();
   } catch (error) {
     setMessage(error.message);
@@ -305,13 +307,14 @@ function renderClips(clips) {
       <strong></strong>
       <span></span>
       <div class="clip-actions">
-        <a target="_blank" rel="noreferrer">Открыть</a>
+        <a rel="noreferrer">Скачать</a>
         <button type="button">Удалить</button>
       </div>
     `;
     card.querySelector("strong").textContent = clip.title;
     card.querySelector("span").textContent = `${clip.provider} · ${formatTime(clip.start)} - ${formatTime(clip.end)}`;
-    card.querySelector("a").href = clip.href;
+    card.querySelector("a").href = `/api/clips/${encodeURIComponent(clip.id)}/file`;
+    card.querySelector("a").download = clip.outputName || "reference-clip.mp4";
     card.querySelector("button").addEventListener("click", () => deleteClip(clip.id));
     clipsEl.append(card);
   }
@@ -502,6 +505,17 @@ function clamp(value, min, max) {
 
 function setMessage(message) {
   messageEl.textContent = message || "";
+}
+
+function triggerDownload(url, fileName) {
+  if (!url) return;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName || "reference-clip.mp4";
+  link.rel = "noreferrer";
+  document.body.append(link);
+  link.click();
+  link.remove();
 }
 
 async function fetchJson(url, options = {}) {

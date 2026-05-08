@@ -5,6 +5,7 @@ import { extname, isAbsolute, join, normalize, relative, resolve } from "node:pa
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import ffmpegStaticPath from "ffmpeg-static";
 import ytdlpConstants from "youtube-dl-exec/src/constants.js";
@@ -148,7 +149,11 @@ async function serveClip(pathname, res) {
 
   try {
     await stat(filePath);
-    res.writeHead(200, { "Content-Type": mimeTypes[extname(filePath)] || "application/octet-stream" });
+    res.writeHead(200, {
+      "Content-Type": mimeTypes[extname(filePath)] || "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName || "clip.mp4")}"`,
+      "Cache-Control": "no-store"
+    });
     createReadStream(filePath).pipe(res);
   } catch {
     sendJson(res, { error: "Clip not found" }, 404);
@@ -485,6 +490,9 @@ async function deleteClip(id) {
 async function serveLibraryClip(id, res) {
   const library = await readLibrary();
   const clip = library.find((item) => item.id === id);
+  if (clip?.href && !clip.file) {
+    return proxyRemoteClip(clip, res);
+  }
   if (!clip?.file) {
     return sendJson(res, { error: "Clip not found" }, 404);
   }
@@ -493,12 +501,27 @@ async function serveLibraryClip(id, res) {
     await stat(clip.file);
     res.writeHead(200, {
       "Content-Type": mimeTypes[extname(clip.file)] || "application/octet-stream",
-      "Content-Disposition": `inline; filename="${encodeURIComponent(clip.outputName || "clip.mp4")}"`
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(clip.outputName || "clip.mp4")}"`,
+      "Cache-Control": "no-store"
     });
     createReadStream(clip.file).pipe(res);
   } catch {
     sendJson(res, { error: "Clip file not found" }, 404);
   }
+}
+
+async function proxyRemoteClip(clip, res) {
+  const response = await fetch(clip.href);
+  if (!response.ok || !response.body) {
+    return sendJson(res, { error: "Remote clip file not found" }, response.status || 404);
+  }
+
+  res.writeHead(200, {
+    "Content-Type": response.headers.get("content-type") || "video/mp4",
+    "Content-Disposition": `attachment; filename="${encodeURIComponent(clip.outputName || "clip.mp4")}"`,
+    "Cache-Control": "no-store"
+  });
+  Readable.fromWeb(response.body).pipe(res);
 }
 
 async function discoverBehanceVideos(pageUrl) {
@@ -516,10 +539,10 @@ async function discoverBehanceVideos(pageUrl) {
   const html = decodeHtmlEntities((await response.text()).replace(/\\\//g, "/").replace(/\\u002F/g, "/"));
   const candidates = new Map();
 
-  for (const match of html.matchAll(/https?:\/\/player\.vimeo\.com\/video\/(\d+)/gi)) {
-    addVideoCandidate(candidates, `https://vimeo.com/${match[1]}`, "Vimeo");
+  for (const match of html.matchAll(/https?:\/\/player\.vimeo\.com\/video\/\d+[^"'<>\\\s]*/gi)) {
+    addVideoCandidate(candidates, match[0], "Vimeo");
   }
-  for (const match of html.matchAll(/https?:\/\/(?:www\.)?vimeo\.com\/(?:video\/)?(\d+)/gi)) {
+  for (const match of html.matchAll(/https?:\/\/(?:www\.)?vimeo\.com\/(?:video\/)?(\d+)(?:[/?#][^"'<>\\\s]*)?/gi)) {
     addVideoCandidate(candidates, `https://vimeo.com/${match[1]}`, "Vimeo");
   }
   for (const match of html.matchAll(/https?:\/\/(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]+)/gi)) {
@@ -629,10 +652,27 @@ function getPreviewUrl(info) {
 }
 
 function addVideoCandidate(candidates, url, provider) {
-  const cleanUrl = url.replace(/&amp;/g, "&");
+  const cleanUrl = provider === "Vimeo" ? normalizeVimeoUrl(url) : url.replace(/&amp;/g, "&");
   if (!isGif(cleanUrl)) {
     candidates.set(cleanUrl, { url: cleanUrl, provider });
   }
+}
+
+function normalizeVimeoUrl(url) {
+  const cleanUrl = url.replace(/&amp;/g, "&");
+  try {
+    const parsed = new URL(cleanUrl);
+    const playerId = parsed.hostname.includes("player.vimeo.com")
+      ? parsed.pathname.match(/\/video\/(\d+)/)?.[1]
+      : "";
+    if (playerId) {
+      const hash = parsed.searchParams.get("h");
+      return hash ? `https://vimeo.com/${playerId}/${hash}` : `https://vimeo.com/${playerId}`;
+    }
+  } catch {
+    return cleanUrl;
+  }
+  return cleanUrl;
 }
 
 function decodeHtmlEntities(value) {

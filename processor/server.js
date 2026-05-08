@@ -11,6 +11,7 @@ const token = process.env.PROCESSOR_TOKEN || "";
 const storageDir = process.env.STORAGE_DIR || "/opt/clipper-processor/storage";
 const clipsDir = join(storageDir, "clips");
 const tempDir = join(storageDir, "tmp");
+const clipTtlMs = Number(process.env.CLIP_TTL_MINUTES || 60) * 60 * 1000;
 
 const mimeTypes = {
   ".mp4": "video/mp4",
@@ -19,6 +20,8 @@ const mimeTypes = {
 };
 
 await ensureStorage();
+cleanupOldClips().catch((error) => console.warn(`Could not clean old clips: ${error.message}`));
+setInterval(() => cleanupOldClips().catch((error) => console.warn(`Could not clean old clips: ${error.message}`)), 15 * 60 * 1000).unref();
 
 createServer(async (req, res) => {
   try {
@@ -144,10 +147,10 @@ async function discoverBehanceVideos(pageUrl) {
 
   const html = decodeHtmlEntities((await response.text()).replace(/\\\//g, "/").replace(/\\u002F/g, "/"));
   const candidates = new Map();
-  for (const match of html.matchAll(/https?:\/\/player\.vimeo\.com\/video\/(\d+)/gi)) {
-    addVideoCandidate(candidates, `https://vimeo.com/${match[1]}`, "Vimeo");
+  for (const match of html.matchAll(/https?:\/\/player\.vimeo\.com\/video\/\d+[^"'<>\\\s]*/gi)) {
+    addVideoCandidate(candidates, match[0], "Vimeo");
   }
-  for (const match of html.matchAll(/https?:\/\/(?:www\.)?vimeo\.com\/(?:video\/)?(\d+)/gi)) {
+  for (const match of html.matchAll(/https?:\/\/(?:www\.)?vimeo\.com\/(?:video\/)?(\d+)(?:[/?#][^"'<>\\\s]*)?/gi)) {
     addVideoCandidate(candidates, `https://vimeo.com/${match[1]}`, "Vimeo");
   }
   for (const match of html.matchAll(/https?:\/\/(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]+)/gi)) {
@@ -348,8 +351,27 @@ function serveClip(pathname, res) {
   if (!filePath.startsWith(resolve(clipsDir))) return sendJson(res, { error: "Forbidden" }, 403);
   createReadStream(filePath)
     .on("error", () => sendJson(res, { error: "Clip not found" }, 404))
-    .once("open", () => res.writeHead(200, { "Content-Type": mimeTypes[extname(filePath)] || "application/octet-stream" }))
+    .once("open", () => res.writeHead(200, {
+      "Content-Type": mimeTypes[extname(filePath)] || "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName || "clip.mp4")}"`,
+      "Cache-Control": "no-store"
+    }))
     .pipe(res);
+}
+
+async function cleanupOldClips() {
+  if (clipTtlMs <= 0) return;
+  const now = Date.now();
+  const entries = await readdir(clipsDir, { withFileTypes: true });
+  await Promise.all(entries
+    .filter((entry) => entry.isFile())
+    .map(async (entry) => {
+      const filePath = join(clipsDir, entry.name);
+      const info = await stat(filePath);
+      if (now - info.mtimeMs > clipTtlMs) {
+        await unlink(filePath).catch(() => {});
+      }
+    }));
 }
 
 async function readJson(req) {
@@ -381,8 +403,25 @@ function matchFirst(value, pattern) {
 }
 
 function addVideoCandidate(candidates, url, provider) {
-  const cleanUrl = url.replace(/&amp;/g, "&");
+  const cleanUrl = provider === "Vimeo" ? normalizeVimeoUrl(url) : url.replace(/&amp;/g, "&");
   if (!isGif(cleanUrl)) candidates.set(cleanUrl, { url: cleanUrl, provider });
+}
+
+function normalizeVimeoUrl(url) {
+  const cleanUrl = url.replace(/&amp;/g, "&");
+  try {
+    const parsed = new URL(cleanUrl);
+    const playerId = parsed.hostname.includes("player.vimeo.com")
+      ? parsed.pathname.match(/\/video\/(\d+)/)?.[1]
+      : "";
+    if (playerId) {
+      const hash = parsed.searchParams.get("h");
+      return hash ? `https://vimeo.com/${playerId}/${hash}` : `https://vimeo.com/${playerId}`;
+    }
+  } catch {
+    return cleanUrl;
+  }
+  return cleanUrl;
 }
 
 function decodeHtmlEntities(value) {
