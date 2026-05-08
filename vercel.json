@@ -3,7 +3,13 @@
   "builds": [
     {
       "src": "api/[...path].js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "node_modules/ffmpeg-static/ffmpeg",
+          "node_modules/yt-dlp-exec/bin/yt-dlp"
+        ]
+      }
     },
     {
       "src": "public/**",
