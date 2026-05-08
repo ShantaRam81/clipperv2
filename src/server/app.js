@@ -1,6 +1,6 @@
 ﻿import { createServer } from "node:http";
 import { mkdir, readFile, readdir, rm, unlink, writeFile, stat } from "node:fs/promises";
-import { createReadStream, existsSync, readdirSync } from "node:fs";
+import { chmodSync, createReadStream, existsSync, readdirSync } from "node:fs";
 import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -910,14 +910,27 @@ function runCommand(command, args, options = {}) {
 }
 
 function resolveCommand(command) {
-  if (commandPaths[command]) return commandPaths[command];
+  if (commandPaths[command]) {
+    makeExecutable(commandPaths[command]);
+    return commandPaths[command];
+  }
   const localAppData = process.env.LOCALAPPDATA || join(process.env.USERPROFILE || "", "AppData", "Local");
   const candidates = [
     join(localAppData, "Microsoft", "WinGet", "Links", `${command}.exe`),
     ...findWinGetPackageCommands(localAppData, command)
   ];
   commandPaths[command] = candidates.find((candidate) => existsSync(candidate)) || command;
+  makeExecutable(commandPaths[command]);
   return commandPaths[command];
+}
+
+function makeExecutable(commandPath) {
+  if (!commandPath || commandPath === "ffmpeg" || commandPath === "ffprobe" || commandPath === "yt-dlp") return;
+  try {
+    chmodSync(commandPath, 0o755);
+  } catch {
+    // Best effort for packaged binaries on serverless platforms.
+  }
 }
 
 function safeRequire(name) {
