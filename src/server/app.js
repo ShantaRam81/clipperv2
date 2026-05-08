@@ -5,9 +5,11 @@ import { extname, isAbsolute, join, normalize, relative, resolve } from "node:pa
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const packagedFfmpegPath = safeRequire("ffmpeg-static");
+const packagedYtdlpConstants = safeRequire("yt-dlp-exec/src/constants");
 
 const rootDir = process.cwd();
 const publicDir = join(rootDir, "public");
@@ -23,7 +25,7 @@ const remoteProcessorToken = process.env.CLIPPER_PROCESSOR_TOKEN || "";
 const commandPaths = {
   "ffmpeg": process.env.FFMPEG_PATH || packagedFfmpegPath,
   "ffprobe": process.env.FFPROBE_PATH,
-  "yt-dlp": process.env.YTDLP_PATH || findPackagedYtdlp()
+  "yt-dlp": process.env.YTDLP_PATH || packagedYtdlpConstants?.YOUTUBE_DL_PATH || findPackagedYtdlp()
 };
 
 const mimeTypes = {
@@ -926,11 +928,26 @@ function safeRequire(name) {
 
 function findPackagedYtdlp() {
   const exeName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+  const packageDir = getPackageDir("yt-dlp-exec");
   const candidates = [
+    packageDir ? join(packageDir, "bin", exeName) : "",
+    packageDir ? join(packageDir, "bin", "yt-dlp") : "",
     join(rootDir, "node_modules", "yt-dlp-exec", "bin", exeName),
     join(rootDir, "node_modules", "yt-dlp-exec", "bin", "yt-dlp")
-  ];
+  ].filter(Boolean);
   return candidates.find((candidate) => existsSync(candidate)) || "";
+}
+
+function getPackageDir(name) {
+  try {
+    return fileURLToPath(new URL(".", import.meta.resolve(`${name}/package.json`)));
+  } catch {
+    try {
+      return require("node:path").dirname(require.resolve(`${name}/package.json`));
+    } catch {
+      return "";
+    }
+  }
 }
 
 function findWinGetPackageCommands(localAppData, command) {
