@@ -1,5 +1,9 @@
 {
   "version": 2,
+  "env": {
+    "YOUTUBE_DL_FILENAME": "yt-dlp_linux",
+    "YOUTUBE_DL_SKIP_PYTHON_CHECK": "1"
+  },
   "builds": [
     {
       "src": "api/[...path].js",
@@ -7,7 +11,7 @@
       "config": {
         "includeFiles": [
           "node_modules/ffmpeg-static/ffmpeg",
-          "node_modules/youtube-dl-exec/bin/yt-dlp"
+          "node_modules/youtube-dl-exec/bin/yt-dlp_linux"
         ]
       }
     },
