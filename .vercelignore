@@ -1,0 +1,7 @@
+node_modules/
+storage/
+.git/
+.vercel/
+*.log
+*.tmp
+*.b64
