@@ -376,7 +376,7 @@ function addEmbeddedConfigCandidate(candidates, config) {
   if (video.id) {
     const id = String(video.id);
     const hash = typeof video.unlisted_hash === "string" ? video.unlisted_hash : "";
-    addVideoCandidate(candidates, hash ? `https://vimeo.com/${id}/${hash}` : `https://vimeo.com/${id}`, "Vimeo");
+    addVideoCandidate(candidates, hash ? `https://player.vimeo.com/video/${id}?h=${hash}` : `https://vimeo.com/${id}`, "Vimeo");
   }
 }
 
