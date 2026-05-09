@@ -284,7 +284,7 @@ select:focus {
 
 .video-option {
   display: grid;
-  grid-template-columns: 16px 86px minmax(0, 1fr);
+  grid-template-columns: 16px 96px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -294,6 +294,12 @@ select:focus {
   background: rgba(255, 255, 255, 0.035);
   color: var(--ink);
   text-align: left;
+}
+
+.video-option > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .video-option:hover,
@@ -316,6 +322,82 @@ select:focus {
 .clip strong {
   overflow-wrap: anywhere;
   font-weight: 700;
+}
+
+.video-option strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.video-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toggle-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.toggle-field span {
+  display: grid;
+  gap: 4px;
+}
+
+.toggle-field strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.toggle-field small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.toggle-field input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toggle-field i {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  transition: background 180ms ease;
+}
+
+.toggle-field i::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f2f3f5;
+  transition: transform 180ms ease;
+}
+
+.toggle-field input:checked + i {
+  background: rgba(211, 214, 220, 0.28);
+}
+
+.toggle-field input:checked + i::after {
+  transform: translateX(18px);
 }
 
 .more-option {
@@ -700,9 +782,17 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .time-inputs,
-  .export-panel,
-  .video-option {
+  .export-panel {
     grid-template-columns: 1fr;
+  }
+
+  .video-option {
+    grid-template-columns: 16px 72px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .video-option img {
+    width: 72px;
   }
 
   .segment-preview {

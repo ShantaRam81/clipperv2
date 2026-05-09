@@ -51,7 +51,9 @@ createServer(async (req, res) => {
       authorize(req);
       const body = await readJson(req);
       if (body.action === "probe") {
-        return sendJson(res, await probeSource(body.url));
+        return sendJson(res, await probeSource(body.url, {
+          includeEmbedded: body.includeEmbedded !== false
+        }));
       }
       if (body.action === "frames") {
         return sendJson(res, await createFrames(body));
@@ -80,16 +82,17 @@ function authorize(req) {
   }
 }
 
-async function probeSource(sourceUrl) {
+async function probeSource(sourceUrl, options = {}) {
   const parsedUrl = validateUrl(sourceUrl);
   const provider = detectProvider(parsedUrl.href);
+  const includeEmbedded = options.includeEmbedded !== false;
 
   if (provider === "Behance") {
-    const options = await discoverBehanceVideos(parsedUrl.href);
-    if (!options.length) {
+    const candidates = await discoverBehanceVideos(parsedUrl.href, { includeEmbedded });
+    if (!candidates.length) {
       throw statusError("В этом Behance-кейсе не найдено поддерживаемое видео.", 404);
     }
-    const enriched = await enrichVideoOptions(options);
+    const enriched = await enrichVideoOptions(candidates);
     return {
       ...enriched[0],
       options: enriched,
@@ -171,7 +174,8 @@ async function createFrames(input) {
   return { frames };
 }
 
-async function discoverBehanceVideos(pageUrl) {
+async function discoverBehanceVideos(pageUrl, options = {}) {
+  const includeEmbedded = options.includeEmbedded !== false;
   const response = await fetch(pageUrl, {
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ReferenceClipper/1.0",
@@ -182,14 +186,8 @@ async function discoverBehanceVideos(pageUrl) {
 
   const html = decodeHtmlEntities((await response.text()).replace(/\\\//g, "/").replace(/\\u002F/g, "/"));
   const candidates = new Map();
-  for (const match of html.matchAll(/https?:\/\/player\.vimeo\.com\/video\/\d+[^"'<>\\\s]*/gi)) {
-    addVideoCandidate(candidates, match[0], "Vimeo");
-  }
   for (const match of html.matchAll(/https?:\/\/(?:www\.)?vimeo\.com\/(?:video\/)?(\d+)(?:[/?#][^"'<>\\\s]*)?/gi)) {
     addVideoCandidate(candidates, `https://vimeo.com/${match[1]}`, "Vimeo");
-  }
-  for (const match of html.matchAll(/https?:\/\/(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]+)/gi)) {
-    addVideoCandidate(candidates, `https://www.youtube.com/watch?v=${match[1]}`, "YouTube");
   }
   for (const match of html.matchAll(/https?:\/\/(?:www\.)?youtube\.com\/watch\?[^"'<> ]*v=([a-zA-Z0-9_-]+)/gi)) {
     addVideoCandidate(candidates, `https://www.youtube.com/watch?v=${match[1]}`, "YouTube");
@@ -197,11 +195,11 @@ async function discoverBehanceVideos(pageUrl) {
   for (const match of html.matchAll(/https?:\/\/youtu\.be\/([a-zA-Z0-9_-]+)/gi)) {
     addVideoCandidate(candidates, `https://www.youtube.com/watch?v=${match[1]}`, "YouTube");
   }
-  for (const match of html.matchAll(/https?:\/\/www-ccv\.adobe\.io\/v1\/player\/ccv\/([a-zA-Z0-9_-]+)\/embed[^"'<> ]*/gi)) {
-    addVideoCandidate(candidates, `https://www-ccv.adobe.io/v1/player/ccv/${match[1]}/embed?api_key=behance1`, "Adobe CCV");
-  }
   for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.(?:mp4|webm|mov)(?:\?[^"'<> ]*)?/gi)) {
     addVideoCandidate(candidates, match[0], "Direct video");
+  }
+  if (includeEmbedded) {
+    addBehanceEmbeddedCandidates(html, candidates);
   }
   return [...candidates.values()].filter((candidate) => !isGif(candidate.url));
 }
@@ -325,6 +323,61 @@ async function resolveMediaFiles(sourceUrl, quality) {
   if (!video && streamedVideo) return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "", streamed: true };
   if (!video) throw statusError("В источнике не найден видеопоток.", 500);
   return { videoPath: video.url, audioPath: audio?.url || "", streamed: false };
+}
+
+function addBehanceEmbeddedCandidates(html, candidates) {
+  for (const match of html.matchAll(/https?:\/\/player\.vimeo\.com\/video\/\d+[^"'<>\\\s]*/gi)) {
+    addVideoCandidate(candidates, match[0], "Vimeo");
+  }
+  for (const match of html.matchAll(/https?:\/\/(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]+)/gi)) {
+    addVideoCandidate(candidates, `https://www.youtube.com/watch?v=${match[1]}`, "YouTube");
+  }
+  for (const match of html.matchAll(/https?:\/\/www-ccv\.adobe\.io\/v1\/player\/ccv\/([a-zA-Z0-9_-]+)\/embed[^"'<> ]*/gi)) {
+    addVideoCandidate(candidates, `https://www-ccv.adobe.io/v1/player/ccv/${match[1]}/embed?api_key=behance1`, "Adobe CCV");
+  }
+  for (const config of readBehancePlayerConfigs(html)) {
+    addEmbeddedConfigCandidate(candidates, config);
+  }
+  for (const match of html.matchAll(/"embedUrl"\s*:\s*"([^"]*player\.vimeo\.com\/video\/[^"]+)"/gi)) {
+    addVideoCandidate(candidates, match[1], "Vimeo");
+  }
+}
+
+function readBehancePlayerConfigs(html) {
+  const configs = [];
+  let offset = 0;
+  while (offset < html.length) {
+    const marker = html.indexOf("window.playerConfig", offset);
+    if (marker === -1) break;
+    const jsonStart = html.indexOf("{", marker);
+    const scriptEnd = html.indexOf("</script>", jsonStart);
+    if (jsonStart === -1 || scriptEnd === -1) break;
+    const raw = html.slice(jsonStart, scriptEnd).trim().replace(/;$/, "").trim();
+    try {
+      configs.push(JSON.parse(raw));
+    } catch {
+      // ignore malformed player config blocks
+    }
+    offset = scriptEnd + 9;
+  }
+  return configs;
+}
+
+function addEmbeddedConfigCandidate(candidates, config) {
+  const video = config?.video || {};
+  if (typeof video.share_url === "string" && video.share_url) {
+    addVideoCandidate(candidates, video.share_url, "Vimeo");
+  }
+  if (typeof video.embed_code === "string" && video.embed_code) {
+    for (const match of video.embed_code.matchAll(/https?:\/\/player\.vimeo\.com\/video\/\d+[^"'<>\\\s]*/gi)) {
+      addVideoCandidate(candidates, match[0], "Vimeo");
+    }
+  }
+  if (video.id) {
+    const id = String(video.id);
+    const hash = typeof video.unlisted_hash === "string" ? video.unlisted_hash : "";
+    addVideoCandidate(candidates, hash ? `https://vimeo.com/${id}/${hash}` : `https://vimeo.com/${id}`, "Vimeo");
+  }
 }
 
 async function getYtdlpInfo(url) {

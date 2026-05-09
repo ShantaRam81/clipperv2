@@ -12,6 +12,7 @@ const statusEl = document.querySelector("#status");
 const messageEl = document.querySelector("#message");
 const clipsEl = document.querySelector("#clips");
 const previewEl = document.querySelector("#sourcePreview");
+const includeEmbeddedInput = document.querySelector("#includeEmbedded");
 const thumbnailEl = document.querySelector("#thumbnail");
 const sourceTitleEl = document.querySelector("#sourceTitle");
 const sourceMetaEl = document.querySelector("#sourceMeta");
@@ -47,6 +48,7 @@ let hlsPlayer = null;
 init();
 
 async function init() {
+  loadPreferences();
   bindEvents();
   loadSavedTags();
   renderTags();
@@ -78,11 +80,20 @@ function bindEvents() {
     previewEl.hidden = true;
     scheduleProbe();
   });
+  includeEmbeddedInput?.addEventListener("change", () => {
+    localStorage.setItem("referenceClipperIncludeEmbedded", includeEmbeddedInput.checked ? "1" : "0");
+    if (urlInput.value.trim()) scheduleProbe();
+  });
   tagInput?.addEventListener("keydown", handleTagKeydown);
   tagInput?.addEventListener("change", () => addTag(tagInput.value));
   playPreviewBtn.addEventListener("click", playSelectedPreview);
   refreshBtn?.addEventListener("click", () => setMessage("Библиотека отключена: фрагменты сохраняются только на устройство."));
   form.addEventListener("submit", saveClip);
+}
+
+function loadPreferences() {
+  if (!includeEmbeddedInput) return;
+  includeEmbeddedInput.checked = localStorage.getItem("referenceClipperIncludeEmbedded") !== "0";
 }
 
 function scheduleProbe() {
@@ -137,7 +148,10 @@ async function probeSource() {
   try {
     const data = await fetchJson("/api/probe", {
       method: "POST",
-      body: JSON.stringify({ url: urlInput.value })
+      body: JSON.stringify({
+        url: urlInput.value,
+        includeEmbedded: includeEmbeddedInput?.checked !== false
+      })
     });
     if (token !== probeToken) return;
 
