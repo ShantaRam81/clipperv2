@@ -27,6 +27,17 @@
           <div id="status" class="status">Проверка</div>
         </header>
 
+        <section id="introState" class="intro-state" aria-label="Быстрый старт">
+          <button type="button" id="pasteFromClipboardBtn" class="paste-cta">Paste from clipboard</button>
+          <p class="intro-note">Скопируйте ссылку в буфер. Когда источник прогрузится, таймлайн и экспорт появятся автоматически.</p>
+        </section>
+
+        <section id="loadingState" class="loading-state" hidden aria-live="polite" aria-busy="true">
+          <div class="loading-spinner" aria-hidden="true"></div>
+          <strong id="loadingTitle">Загружаю источник...</strong>
+          <p id="loadingDetail">Проверяю ссылку, поднимаю предпросмотр и собираю таймлайн.</p>
+        </section>
+
         <form id="clipForm" class="clip-card">
           <div class="source-panel panel">
             <label class="field full">

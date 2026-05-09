@@ -28,6 +28,12 @@ const timeBubbleEl = document.querySelector("#timeBubble");
 const previewSelectedRangeEl = document.querySelector("#previewSelectedRange");
 const playPreviewBtn = document.querySelector(".play-preview");
 const previewVideoEl = document.querySelector("#previewVideo");
+const appShellEl = document.querySelector(".app-shell");
+const introStateEl = document.querySelector("#introState");
+const loadingStateEl = document.querySelector("#loadingState");
+const loadingTitleEl = document.querySelector("#loadingTitle");
+const loadingDetailEl = document.querySelector("#loadingDetail");
+const pasteFromClipboardBtn = document.querySelector("#pasteFromClipboardBtn");
 
 let sourceDuration = 30;
 let selectedSourceUrl = "";
@@ -44,10 +50,12 @@ let showingAllOptions = false;
 let currentOptions = [];
 let isSaving = false;
 let hlsPlayer = null;
+let uiState = "idle";
 
 init();
 
 async function init() {
+  setUiState("idle");
   loadPreferences();
   bindEvents();
   loadSavedTags();
@@ -78,8 +86,10 @@ function bindEvents() {
     currentOptions = [];
     videoOptionsEl.hidden = true;
     previewEl.hidden = true;
+    setUiState(urlInput.value.trim() ? "loading" : "idle", "Проверяю ссылку...", "Подготавливаю источник и жду ответ от сервера.");
     scheduleProbe();
   });
+  pasteFromClipboardBtn?.addEventListener("click", pasteFromClipboard);
   includeEmbeddedInput?.addEventListener("change", () => {
     localStorage.setItem("referenceClipperIncludeEmbedded", includeEmbeddedInput.checked ? "1" : "0");
     if (urlInput.value.trim()) scheduleProbe();
@@ -100,16 +110,41 @@ function scheduleProbe() {
   clearTimeout(probeTimer);
   const value = urlInput.value.trim();
   if (!value) {
+    setUiState("idle");
     setMessage("");
     return;
   }
   try {
     new URL(value);
   } catch {
+    setUiState("idle");
     setMessage("Вставьте полную ссылку.");
     return;
   }
   probeTimer = setTimeout(() => probeSource(), 650);
+}
+
+async function pasteFromClipboard() {
+  if (!navigator.clipboard?.readText) {
+    setMessage("Браузер не дал доступ к буферу обмена. Вставьте ссылку вручную.");
+    urlInput.focus();
+    return;
+  }
+
+  setUiState("loading", "Читаю буфер обмена...", "Забираю ссылку и запускаю распознавание источника.");
+  try {
+    const value = (await navigator.clipboard.readText()).trim();
+    if (!value) {
+      setUiState("idle");
+      setMessage("Буфер обмена пуст. Скопируйте ссылку и попробуйте снова.");
+      return;
+    }
+    urlInput.value = value;
+    await probeSource();
+  } catch (error) {
+    setUiState("idle");
+    setMessage(error.message || "Не удалось прочитать буфер обмена.");
+  }
 }
 
 async function chooseOutputFolder() {
@@ -144,6 +179,7 @@ async function loadHealth() {
 
 async function probeSource() {
   const token = ++probeToken;
+  setUiState("loading", "Загружаю источник...", "Проверяю ссылку, ищу видео и собираю таймлайн.");
   setMessage("Получаю метаданные...");
   try {
     const data = await fetchJson("/api/probe", {
@@ -156,9 +192,11 @@ async function probeSource() {
     if (token !== probeToken) return;
 
     renderVideoOptions(data.options || []);
-    applySource(data);
+    await applySource(data);
     setMessage(data.message || "Источник распознан.");
+    setUiState("ready");
   } catch (error) {
+    setUiState(urlInput.value.trim() ? "ready" : "idle");
     setMessage(error.message);
   }
 }
@@ -225,8 +263,16 @@ function renderVideoOptions(options) {
       }
       item.classList.add("active");
       item.querySelector("input").checked = true;
-      applySource(option);
-      setMessage(`Выбрано: ${option.title || option.provider}`);
+      setUiState("loading", "Переключаю видео...", "Обновляю выбранный источник и перестраиваю таймлайн.");
+      applySource(option)
+        .then(() => {
+          setUiState("ready");
+          setMessage(`Выбрано: ${option.title || option.provider}`);
+        })
+        .catch((error) => {
+          setUiState("ready");
+          setMessage(error?.message || `Не удалось переключить источник.`);
+        });
     });
     videoOptionsEl.append(item);
   }
@@ -254,7 +300,7 @@ function renderVideoOptions(options) {
   }
 }
 
-function applySource(data) {
+async function applySource(data) {
   selectedSourceUrl = data.url || urlInput.value;
   selectedPreviewUrl = data.previewUrl || directVideoUrl(selectedSourceUrl);
   selectedPreviewKind = data.previewKind || inferPreviewKind(selectedPreviewUrl);
@@ -269,13 +315,21 @@ function applySource(data) {
   thumbnailEl.src = data.thumbnail || inlinePlaceholder();
   renderFilmFrames(data.thumbnail || inlinePlaceholder());
   currentFilmstripUrl = selectedSourceUrl;
-  buildServerFilmstrip(selectedSourceUrl, sourceDuration).catch(() => {
-    currentFilmstripUrl = selectedPreviewUrl;
-    if (selectedPreviewUrl) buildVideoFilmstrip(selectedPreviewUrl).catch(() => {});
-  });
+  await buildInitialFilmstrip(selectedSourceUrl, sourceDuration, selectedPreviewUrl);
   resetPreviewVideo();
   previewEl.hidden = false;
   syncRange("range");
+}
+
+async function buildInitialFilmstrip(sourceUrl, duration, previewUrl) {
+  try {
+    await buildServerFilmstrip(sourceUrl, duration);
+  } catch {
+    currentFilmstripUrl = previewUrl;
+    if (previewUrl) {
+      await buildVideoFilmstrip(previewUrl).catch(() => {});
+    }
+  }
 }
 
 function renderFilmFrames(thumbnail) {
@@ -674,6 +728,21 @@ function setSaveBusy(busy) {
   if (!button) return;
   button.disabled = busy;
   button.textContent = busy ? "Готовлю файл..." : "Сохранить фрагмент";
+}
+
+function setUiState(nextState, title = "", detail = "") {
+  uiState = nextState;
+  appShellEl.dataset.uiState = nextState;
+  introStateEl.hidden = nextState !== "idle";
+  loadingStateEl.hidden = nextState !== "loading";
+  pasteFromClipboardBtn.disabled = nextState === "loading";
+
+  if (title) {
+    loadingTitleEl.textContent = title;
+  }
+  if (detail) {
+    loadingDetailEl.textContent = detail;
+  }
 }
 
 async function chooseSaveFileHandle(fileName) {
