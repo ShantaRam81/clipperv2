@@ -948,7 +948,7 @@ function normalizeVimeoUrl(url) {
       : "";
     if (playerId) {
       const hash = parsed.searchParams.get("h");
-      return hash ? `https://vimeo.com/${playerId}/${hash}` : cleanUrl;
+      return hash ? cleanUrl : `https://vimeo.com/${playerId}`;
     }
   } catch {
     return cleanUrl;
@@ -1440,4 +1440,3 @@ function statusError(message, status) {
   error.status = status;
   return error;
 }
-
