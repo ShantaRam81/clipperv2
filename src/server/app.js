@@ -917,7 +917,10 @@ function getPreviewSource(info) {
 function addVideoCandidate(candidates, url, provider) {
   const cleanUrl = provider === "Vimeo" ? normalizeVimeoUrl(url) : url.replace(/&amp;/g, "&");
   if (!isGif(cleanUrl)) {
-    candidates.set(getVideoCandidateKey(cleanUrl, provider), { url: cleanUrl, provider });
+    const key = getVideoCandidateKey(cleanUrl, provider);
+    const current = candidates.get(key);
+    if (provider === "Vimeo" && current && isVimeoPlayerUrl(current.url) && !isVimeoPlayerUrl(cleanUrl)) return;
+    candidates.set(key, { url: cleanUrl, provider });
   }
 }
 
@@ -954,6 +957,14 @@ function normalizeVimeoUrl(url) {
     return cleanUrl;
   }
   return cleanUrl;
+}
+
+function isVimeoPlayerUrl(value) {
+  try {
+    return new URL(value).hostname.includes("player.vimeo.com");
+  } catch {
+    return false;
+  }
 }
 
 function decodeHtmlEntities(value) {
