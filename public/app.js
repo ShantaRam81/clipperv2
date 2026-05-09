@@ -29,11 +29,11 @@ const previewSelectedRangeEl = document.querySelector("#previewSelectedRange");
 const playPreviewBtn = document.querySelector(".play-preview");
 const previewVideoEl = document.querySelector("#previewVideo");
 const appShellEl = document.querySelector(".app-shell");
-const introStateEl = document.querySelector("#introState");
 const loadingStateEl = document.querySelector("#loadingState");
 const loadingTitleEl = document.querySelector("#loadingTitle");
 const loadingDetailEl = document.querySelector("#loadingDetail");
 const pasteFromClipboardBtn = document.querySelector("#pasteFromClipboardBtn");
+const commandMessageEl = document.querySelector("#commandMessage");
 
 let sourceDuration = 30;
 let selectedSourceUrl = "";
@@ -86,10 +86,11 @@ function bindEvents() {
     currentOptions = [];
     videoOptionsEl.hidden = true;
     previewEl.hidden = true;
-    setUiState(urlInput.value.trim() ? "loading" : "idle", "Проверяю ссылку...", "Подготавливаю источник и жду ответ от сервера.");
+    setUiState(urlInput.value.trim() ? "loading" : "idle", "Проверка", "Ищу видео и длительность.");
     scheduleProbe();
   });
   pasteFromClipboardBtn?.addEventListener("click", pasteFromClipboard);
+  pasteFromClipboardBtn?.addEventListener("contextmenu", (event) => event.preventDefault());
   includeEmbeddedInput?.addEventListener("change", () => {
     localStorage.setItem("referenceClipperIncludeEmbedded", includeEmbeddedInput.checked ? "1" : "0");
     if (urlInput.value.trim()) scheduleProbe();
@@ -124,26 +125,29 @@ function scheduleProbe() {
   probeTimer = setTimeout(() => probeSource(), 650);
 }
 
-async function pasteFromClipboard() {
+async function pasteFromClipboard(event) {
+  event?.preventDefault();
   if (!navigator.clipboard?.readText) {
-    setMessage("Браузер не дал доступ к буферу обмена. Вставьте ссылку вручную.");
+    setMessage("Вставьте ссылку в поле вручную.");
     urlInput.focus();
     return;
   }
 
-  setUiState("loading", "Читаю буфер обмена...", "Забираю ссылку и запускаю распознавание источника.");
+  setUiState("loading", "Paste", "Читаю буфер обмена.");
   try {
     const value = (await navigator.clipboard.readText()).trim();
     if (!value) {
       setUiState("idle");
-      setMessage("Буфер обмена пуст. Скопируйте ссылку и попробуйте снова.");
+      setMessage("Буфер обмена пуст.");
+      urlInput.focus();
       return;
     }
     urlInput.value = value;
     await probeSource();
   } catch (error) {
     setUiState("idle");
-    setMessage(error.message || "Не удалось прочитать буфер обмена.");
+    setMessage("Вставьте ссылку в поле вручную.");
+    urlInput.focus();
   }
 }
 
@@ -179,7 +183,7 @@ async function loadHealth() {
 
 async function probeSource() {
   const token = ++probeToken;
-  setUiState("loading", "Загружаю источник...", "Проверяю ссылку, ищу видео и собираю таймлайн.");
+  setUiState("loading", "Загрузка", "Собираю предпросмотр и таймлайн.");
   setMessage("Получаю метаданные...");
   try {
     const data = await fetchJson("/api/probe", {
@@ -196,7 +200,7 @@ async function probeSource() {
     setMessage(data.message || "Источник распознан.");
     setUiState("ready");
   } catch (error) {
-    setUiState(urlInput.value.trim() ? "ready" : "idle");
+    setUiState(selectedSourceUrl ? "ready" : "idle");
     setMessage(error.message);
   }
 }
@@ -263,7 +267,7 @@ function renderVideoOptions(options) {
       }
       item.classList.add("active");
       item.querySelector("input").checked = true;
-      setUiState("loading", "Переключаю видео...", "Обновляю выбранный источник и перестраиваю таймлайн.");
+      setUiState("loading", "Переключение", "Обновляю таймлайн.");
       applySource(option)
         .then(() => {
           setUiState("ready");
@@ -721,6 +725,7 @@ function clamp(value, min, max) {
 
 function setMessage(message) {
   messageEl.textContent = message || "";
+  commandMessageEl.textContent = message || "";
 }
 
 function setSaveBusy(busy) {
@@ -733,7 +738,6 @@ function setSaveBusy(busy) {
 function setUiState(nextState, title = "", detail = "") {
   uiState = nextState;
   appShellEl.dataset.uiState = nextState;
-  introStateEl.hidden = nextState !== "idle";
   loadingStateEl.hidden = nextState !== "loading";
   pasteFromClipboardBtn.disabled = nextState === "loading";
 

@@ -20,35 +20,32 @@
             <span></span>
           </div>
           <div class="title-block">
-            <p class="eyebrow">Web reference studio</p>
             <h1>Reference Clipper</h1>
-            <p>Выбирайте короткий фрагмент из Behance, Vimeo, YouTube и сохраняйте его сразу на свое устройство.</p>
           </div>
           <div id="status" class="status">Проверка</div>
         </header>
 
-        <section id="introState" class="intro-state" aria-label="Быстрый старт">
-          <button type="button" id="pasteFromClipboardBtn" class="paste-cta">Paste from clipboard</button>
-          <p class="intro-note">Скопируйте ссылку в буфер. Когда источник прогрузится, таймлайн и экспорт появятся автоматически.</p>
+        <section id="introState" class="command-panel" aria-label="Источник">
+          <div class="paste-row">
+            <input id="url" type="url" placeholder="Paste a Behance, Vimeo or YouTube URL" autocomplete="off" required>
+            <button type="button" id="pasteFromClipboardBtn" class="paste-cta">Paste from clipboard</button>
+          </div>
+          <div id="commandMessage" class="command-message" aria-live="polite"></div>
         </section>
 
         <section id="loadingState" class="loading-state" hidden aria-live="polite" aria-busy="true">
           <div class="loading-spinner" aria-hidden="true"></div>
-          <strong id="loadingTitle">Загружаю источник...</strong>
-          <p id="loadingDetail">Проверяю ссылку, поднимаю предпросмотр и собираю таймлайн.</p>
+          <div>
+            <strong id="loadingTitle">Загрузка</strong>
+            <p id="loadingDetail">Источник готовится.</p>
+          </div>
         </section>
 
         <form id="clipForm" class="clip-card">
           <div class="source-panel panel">
-            <label class="field full">
-              <span>Ссылка на источник</span>
-              <input id="url" type="url" placeholder="https://www.behance.net/gallery/..." required>
-            </label>
-
             <label class="toggle-field full" for="includeEmbedded">
               <span>
-                <strong>Читать встроенные плееры</strong>
-                <small>Полезно для Behance-кейсов, где видео спрятано во Vimeo/YouTube embed.</small>
+                <strong>Embedded video</strong>
               </span>
               <input id="includeEmbedded" type="checkbox" checked>
               <i aria-hidden="true"></i>
@@ -57,7 +54,6 @@
             <div id="sourcePreview" class="source-preview" hidden>
               <img id="thumbnail" alt="">
               <div>
-                <span class="meta-label">Источник</span>
                 <strong id="sourceTitle">Источник</strong>
                 <small id="sourceMeta">00:30</small>
               </div>
@@ -68,7 +64,6 @@
 
           <section class="timeline-block panel" aria-label="Выбор фрагмента">
             <div class="timeline-head">
-              <span>Фрагмент</span>
               <strong id="rangeLabel">00:00.0 - 00:05.0</strong>
             </div>
 
@@ -94,15 +89,15 @@
 
             <div class="time-inputs">
               <label class="field">
-                <span>Начало</span>
+                <span>Start</span>
                 <input id="start" type="text" value="00:00.0">
               </label>
               <label class="field">
-                <span>Конец</span>
+                <span>End</span>
                 <input id="end" type="text" value="00:05.0">
               </label>
               <label class="field">
-                <span>Длина</span>
+                <span>Length</span>
                 <input id="duration" type="text" value="5.0 сек" readonly>
               </label>
             </div>
@@ -110,19 +105,19 @@
 
           <div class="export-panel panel">
             <label class="field full">
-              <span>Название фрагмента</span>
+              <span>Name</span>
               <input id="title" type="text" placeholder="Например: kinetic typography / logo reveal" required>
             </label>
 
             <label class="field full">
-              <span>Теги для имени файла</span>
+              <span>Tags</span>
               <input id="tagInput" type="text" list="tagSuggestions" placeholder="car, ui, motion">
               <datalist id="tagSuggestions"></datalist>
             </label>
             <div id="tagChips" class="tag-chips" aria-label="Выбранные теги"></div>
 
             <label class="field">
-              <span>Качество</span>
+              <span>Quality</span>
               <select id="quality">
                 <option value="720">720p, оптимально</option>
                 <option value="480">480p, быстрее</option>
@@ -138,7 +133,6 @@
       <aside class="library" aria-label="Экспорт">
         <header>
           <div>
-            <p class="eyebrow">Device export</p>
             <h2>Сохранение</h2>
           </div>
           <button type="button" id="refreshBtn" aria-label="Статус сохранения">↻</button>
