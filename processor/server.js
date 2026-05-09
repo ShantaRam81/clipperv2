@@ -99,9 +99,11 @@ async function probeSource(sourceUrl) {
   }
 
   const info = await getYtdlpInfo(parsedUrl.href);
+  const preview = getPreviewSource(info);
   return {
     url: parsedUrl.href,
-    previewUrl: getPreviewUrl(info),
+    previewUrl: preview.url,
+    previewKind: preview.kind,
     provider,
     title: info.title || "",
     duration: Number(info.duration || 30),
@@ -215,10 +217,12 @@ async function enrichVideoOptions(options) {
         continue;
       }
       const info = await getYtdlpInfo(option.url);
+      const preview = getPreviewSource(info);
       enriched.push({
         id: `${option.provider.toLowerCase()}-${index}`,
         url: option.url,
-        previewUrl: getPreviewUrl(info),
+        previewUrl: preview.url,
+        previewKind: preview.kind,
         provider: option.provider,
         title: info.title || `${option.provider} video ${index + 1}`,
         duration: Number(info.duration || 30),
@@ -451,20 +455,38 @@ async function assertVideoFile(filePath) {
   }
 }
 
-function getPreviewUrl(info) {
-  if (typeof info.url === "string" && /^https?:\/\//i.test(info.url)) return info.url;
+function getPreviewSource(info) {
+  if (typeof info.url === "string" && /^https?:\/\//i.test(info.url)) {
+    return {
+      url: info.url,
+      kind: isStreamProtocol(info.protocol) ? "hls" : "direct"
+    };
+  }
   const requested = [
     ...(Array.isArray(info.requested_downloads) ? info.requested_downloads : []),
     ...(Array.isArray(info.requested_formats) ? info.requested_formats : []),
     ...(Array.isArray(info.formats) ? info.formats : [])
   ];
-  const playable = requested.find((format) => {
+  const directPlayable = requested.find((format) => {
     if (!format?.url || !/^https?:\/\//i.test(format.url)) return false;
     if (format.vcodec === "none") return false;
     const protocol = String(format.protocol || "");
-    return !protocol.includes("m3u8") && !protocol.includes("dash");
+    return !isStreamProtocol(protocol);
   });
-  return playable?.url || "";
+  if (directPlayable?.url) {
+    return { url: directPlayable.url, kind: "direct" };
+  }
+
+  const streamPlayable = requested.find((format) => {
+    if (!format?.url || !/^https?:\/\//i.test(format.url)) return false;
+    if (format.vcodec === "none") return false;
+    return isStreamProtocol(format.protocol);
+  });
+  if (streamPlayable?.url) {
+    return { url: streamPlayable.url, kind: "hls" };
+  }
+
+  return { url: "", kind: "" };
 }
 
 function runCommand(command, args, options = {}) {

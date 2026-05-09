@@ -333,6 +333,7 @@ async function createPreview(sourceUrl) {
     }
     return {
       previewUrl: data.previewUrl,
+      previewKind: data.previewKind || "",
       provider: data.provider || detectProvider(parsedUrl.href),
       expiresSoon: true
     };
@@ -345,13 +346,15 @@ async function createPreview(sourceUrl) {
 
   const result = await runCommand("yt-dlp", ["--dump-json", "--no-playlist", parsedUrl.href], { timeout: 30000 });
   const info = JSON.parse(result.stdout);
-  const previewUrl = getPreviewUrl(info);
+  const preview = getPreviewSource(info);
+  const previewUrl = preview.url;
   if (!previewUrl) {
     throw statusError("Не удалось получить временную ссылку для предпросмотра.", 502);
   }
 
   return {
     previewUrl,
+    previewKind: preview.kind,
     provider: detectProvider(parsedUrl.href),
     expiresSoon: true
   };
@@ -819,9 +822,12 @@ function matchFirst(value, pattern) {
   return match ? match[1].replace(/&amp;/g, "&") : "";
 }
 
-function getPreviewUrl(info) {
+function getPreviewSource(info) {
   if (typeof info.url === "string" && /^https?:\/\//i.test(info.url)) {
-    return info.url;
+    return {
+      url: info.url,
+      kind: isStreamProtocol(info.protocol) ? "hls" : "direct"
+    };
   }
 
   const requested = [
@@ -829,14 +835,25 @@ function getPreviewUrl(info) {
     ...(Array.isArray(info.requested_formats) ? info.requested_formats : []),
     ...(Array.isArray(info.formats) ? info.formats : [])
   ];
-  const playable = requested.find((format) => {
+  const directPlayable = requested.find((format) => {
     if (!format?.url || !/^https?:\/\//i.test(format.url)) return false;
     if (format.vcodec === "none") return false;
-    const protocol = String(format.protocol || "");
-    return !protocol.includes("m3u8") && !protocol.includes("dash");
+    return !isStreamProtocol(format.protocol);
   });
+  if (directPlayable?.url) {
+    return { url: directPlayable.url, kind: "direct" };
+  }
 
-  return playable?.url || "";
+  const streamPlayable = requested.find((format) => {
+    if (!format?.url || !/^https?:\/\//i.test(format.url)) return false;
+    if (format.vcodec === "none") return false;
+    return isStreamProtocol(format.protocol);
+  });
+  if (streamPlayable?.url) {
+    return { url: streamPlayable.url, kind: "hls" };
+  }
+
+  return { url: "", kind: "" };
 }
 
 function addVideoCandidate(candidates, url, provider) {

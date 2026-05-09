@@ -1,5 +1,6 @@
 node_modules/
 .vercel/
+private/
 
 # Runtime storage and generated media
 storage/*

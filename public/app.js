@@ -31,6 +31,7 @@ const previewVideoEl = document.querySelector("#previewVideo");
 let sourceDuration = 30;
 let selectedSourceUrl = "";
 let selectedPreviewUrl = "";
+let selectedPreviewKind = "";
 let probeTimer = 0;
 let probeToken = 0;
 let activeDrag = null;
@@ -41,6 +42,7 @@ let savedTags = [];
 let showingAllOptions = false;
 let currentOptions = [];
 let isSaving = false;
+let hlsPlayer = null;
 
 init();
 
@@ -69,6 +71,7 @@ function bindEvents() {
     probeToken += 1;
     selectedSourceUrl = "";
     selectedPreviewUrl = "";
+    selectedPreviewKind = "";
     showingAllOptions = false;
     currentOptions = [];
     videoOptionsEl.hidden = true;
@@ -240,6 +243,7 @@ function renderVideoOptions(options) {
 function applySource(data) {
   selectedSourceUrl = data.url || urlInput.value;
   selectedPreviewUrl = data.previewUrl || directVideoUrl(selectedSourceUrl);
+  selectedPreviewKind = data.previewKind || inferPreviewKind(selectedPreviewUrl);
   sourceDuration = Math.max(1, Number(data.duration || 30));
   startRange.max = sourceDuration;
   endRange.max = sourceDuration;
@@ -508,10 +512,8 @@ async function playSelectedPreview() {
   if (!previewUrl) return;
 
   const start = Number(startRange.value);
+  await loadPreviewMedia(previewUrl);
   previewVideoEl.hidden = false;
-  if (previewVideoEl.src !== previewUrl) {
-    previewVideoEl.src = previewUrl;
-  }
   previewVideoEl.currentTime = start;
 
   try {
@@ -532,11 +534,73 @@ async function getPreviewSource() {
       body: JSON.stringify({ url: selectedSourceUrl })
     });
     selectedPreviewUrl = data.previewUrl || "";
+    selectedPreviewKind = data.previewKind || inferPreviewKind(selectedPreviewUrl);
     return selectedPreviewUrl;
   } catch (error) {
     setMessage(error.message);
     return "";
   }
+}
+
+async function loadPreviewMedia(previewUrl) {
+  if (!previewUrl) return;
+
+  const nextKind = selectedPreviewKind || inferPreviewKind(previewUrl);
+  teardownPreviewPlayer();
+
+  if (nextKind === "hls") {
+    const canPlayNativeHls = previewVideoEl.canPlayType("application/vnd.apple.mpegurl");
+    if (canPlayNativeHls) {
+      if (previewVideoEl.src !== previewUrl) {
+        previewVideoEl.src = previewUrl;
+        await waitForPreviewReady();
+      }
+      return;
+    }
+
+    if (window.Hls?.isSupported?.()) {
+      hlsPlayer = new window.Hls({
+        enableWorker: true,
+        lowLatencyMode: false
+      });
+      hlsPlayer.attachMedia(previewVideoEl);
+      await new Promise((resolve, reject) => {
+        const onAttached = () => {
+          hlsPlayer.off(window.Hls.Events.MEDIA_ATTACHED, onAttached);
+          hlsPlayer.loadSource(previewUrl);
+        };
+        const onManifest = () => {
+          hlsPlayer.off(window.Hls.Events.MANIFEST_PARSED, onManifest);
+          hlsPlayer.off(window.Hls.Events.ERROR, onError);
+          resolve();
+        };
+        const onError = (_event, data) => {
+          if (data?.fatal) {
+            hlsPlayer.off(window.Hls.Events.MEDIA_ATTACHED, onAttached);
+            hlsPlayer.off(window.Hls.Events.MANIFEST_PARSED, onManifest);
+            hlsPlayer.off(window.Hls.Events.ERROR, onError);
+            reject(new Error("Не удалось открыть HLS-предпросмотр."));
+          }
+        };
+        hlsPlayer.on(window.Hls.Events.MEDIA_ATTACHED, onAttached);
+        hlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, onManifest);
+        hlsPlayer.on(window.Hls.Events.ERROR, onError);
+      });
+      return;
+    }
+
+    throw new Error("Этот браузер не поддерживает HLS-предпросмотр.");
+  }
+
+  if (previewVideoEl.src !== previewUrl) {
+    previewVideoEl.src = previewUrl;
+    await waitForPreviewReady();
+  }
+}
+
+async function waitForPreviewReady() {
+  if (previewVideoEl.readyState >= 1) return;
+  await waitForVideoEvent(previewVideoEl, "loadedmetadata", 10000);
 }
 
 function stopPreviewAtEnd() {
@@ -546,14 +610,29 @@ function stopPreviewAtEnd() {
 }
 
 function resetPreviewVideo() {
+  teardownPreviewPlayer();
   previewVideoEl.pause();
   previewVideoEl.removeAttribute("src");
   previewVideoEl.load();
   previewVideoEl.hidden = true;
 }
 
+function teardownPreviewPlayer() {
+  if (hlsPlayer) {
+    hlsPlayer.destroy();
+    hlsPlayer = null;
+  }
+}
+
 function directVideoUrl(url) {
   return /^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(url) ? url : "";
+}
+
+function inferPreviewKind(url) {
+  const value = String(url || "");
+  if (!value) return "";
+  if (/\.m3u8(\?|$)/i.test(value) || /\/playlist\//i.test(value)) return "hls";
+  return "direct";
 }
 
 function parseTime(value) {
