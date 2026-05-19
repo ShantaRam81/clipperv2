@@ -270,13 +270,7 @@ async function enrichAdobeCcvOption(option, index) {
 async function resolveMediaFiles(sourceUrl, quality) {
   if (isDirectVideoUrl(sourceUrl)) return { videoPath: sourceUrl, audioPath: "" };
 
-  const info = await getYtdlpInfo(sourceUrl);
-  const infoProtocol = String(info.protocol || "");
-  const cleanInfoUrl = cleanMediaUrl(info.url);
-  if (cleanInfoUrl && !isStreamProtocol(infoProtocol)) {
-    return { videoPath: cleanInfoUrl, audioPath: "", streamed: false };
-  }
-
+  const info = await getYtdlpInfo(sourceUrl, getYtdlpFormat(quality));
   const requested = [
     ...(Array.isArray(info.requested_downloads) ? info.requested_downloads : []),
     ...(Array.isArray(info.requested_formats) ? info.requested_formats : []),
@@ -293,16 +287,12 @@ async function resolveMediaFiles(sourceUrl, quality) {
     const protocol = String(format.protocol || "");
     return !isStreamProtocol(protocol);
   };
-  const byQuality = (a, b) => {
-    const aScore = Number(a.height || 0) * 100000 + Number(a.tbr || a.vbr || a.abr || 0);
-    const bScore = Number(b.height || 0) * 100000 + Number(b.tbr || b.vbr || b.abr || 0);
-    return bScore - aScore;
-  };
+  const qualityScore = (format) => Number(format.height || 0) * 100000 + Number(format.tbr || format.vbr || format.abr || 0);
+  const byQuality = (a, b) => qualityScore(b) - qualityScore(a);
 
   const combined = formats
     .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
     .sort(byQuality)[0];
-  if (combined) return { videoPath: combined.url, audioPath: "", streamed: false };
 
   const video = formats
     .filter((format) => hasVideo(format) && !hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
@@ -310,18 +300,33 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const audio = formats
     .filter((format) => hasAudio(format) && !hasVideo(format) && isPlainHttpMedia(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+  if (video && audio && (!combined || qualityScore(video) > qualityScore(combined))) {
+    return { videoPath: video.url, audioPath: audio.url, streamed: false };
+  }
+  if (combined) return { videoPath: combined.url, audioPath: "", streamed: false };
+
   const streamedCombined = formats
     .filter((format) => hasVideo(format) && hasAudio(format) && withinStreamQuality(format, maxHeight))
     .sort(byQuality)[0];
-  if (!video && streamedCombined) return { videoPath: streamedCombined.url, audioPath: "", streamed: true };
   const streamedVideo = formats
     .filter((format) => hasVideo(format) && !hasAudio(format) && withinStreamQuality(format, maxHeight))
     .sort(byQuality)[0];
   const streamedAudio = formats
     .filter((format) => hasAudio(format) && !hasVideo(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+  if (!video && streamedVideo && streamedAudio && (!streamedCombined || qualityScore(streamedVideo) > qualityScore(streamedCombined))) {
+    return { videoPath: streamedVideo.url, audioPath: streamedAudio.url, streamed: true };
+  }
+  if (!video && streamedCombined) return { videoPath: streamedCombined.url, audioPath: "", streamed: true };
   if (!video && streamedVideo) return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "", streamed: true };
-  if (!video) throw statusError("В источнике не найден видеопоток.", 500);
+  if (!video) {
+    const infoProtocol = String(info.protocol || "");
+    const cleanInfoUrl = cleanMediaUrl(info.url);
+    if (cleanInfoUrl && !isStreamProtocol(infoProtocol)) {
+      return { videoPath: cleanInfoUrl, audioPath: "", streamed: false };
+    }
+    throw statusError("В источнике не найден видеопоток.", 500);
+  }
   return { videoPath: video.url, audioPath: audio?.url || "", streamed: false };
 }
 
@@ -380,16 +385,18 @@ function addEmbeddedConfigCandidate(candidates, config) {
   }
 }
 
-async function getYtdlpInfo(url) {
-  const result = await runCommand("yt-dlp", [
+async function getYtdlpInfo(url, format = "") {
+  const args = [
     "--dump-json",
     "--no-playlist",
     "--js-runtimes",
     "deno",
     "--remote-components",
-    "ejs:github",
-    url
-  ], { timeout: 60000 });
+    "ejs:github"
+  ];
+  if (format) args.push("-f", format);
+  args.push(url);
+  const result = await runCommand("yt-dlp", args, { timeout: 60000 });
   return JSON.parse(result.stdout);
 }
 
@@ -749,6 +756,11 @@ function normalizeQuality(value) {
   const allowed = new Set(["source", "1080", "720", "480"]);
   const quality = String(value || "720");
   return allowed.has(quality) ? quality : "720";
+}
+
+function getYtdlpFormat(quality) {
+  if (quality === "source") return "bv*+ba/b";
+  return `bv*[height<=${quality}]+ba/b[height<=${quality}]/b`;
 }
 
 function getMaxHeight(quality) {

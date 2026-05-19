@@ -984,14 +984,14 @@ async function resolveMediaFiles(sourceUrl, quality) {
     return { videoPath: sourceUrl, audioPath: "", streamed: false };
   }
 
-  const result = await runCommand("yt-dlp", ["--dump-json", "--no-playlist", sourceUrl], { timeout: 30000 });
+  const result = await runCommand("yt-dlp", [
+    "--dump-json",
+    "--no-playlist",
+    "-f",
+    getYtdlpFormat(quality),
+    sourceUrl
+  ], { timeout: 60000 });
   const info = JSON.parse(result.stdout);
-  const infoProtocol = String(info.protocol || "");
-  const cleanInfoUrl = cleanMediaUrl(info.url);
-  if (cleanInfoUrl && !isStreamProtocol(infoProtocol)) {
-    return { videoPath: cleanInfoUrl, audioPath: "", streamed: false };
-  }
-
   const requested = [
     ...(Array.isArray(info.requested_downloads) ? info.requested_downloads : []),
     ...(Array.isArray(info.requested_formats) ? info.requested_formats : []),
@@ -1008,18 +1008,12 @@ async function resolveMediaFiles(sourceUrl, quality) {
     const protocol = String(format.protocol || "");
     return !isStreamProtocol(protocol);
   };
-  const byQuality = (a, b) => {
-    const aScore = Number(a.height || 0) * 100000 + Number(a.tbr || a.vbr || a.abr || 0);
-    const bScore = Number(b.height || 0) * 100000 + Number(b.tbr || b.vbr || b.abr || 0);
-    return bScore - aScore;
-  };
+  const qualityScore = (format) => Number(format.height || 0) * 100000 + Number(format.tbr || format.vbr || format.abr || 0);
+  const byQuality = (a, b) => qualityScore(b) - qualityScore(a);
 
   const combined = formats
     .filter((format) => hasVideo(format) && hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
     .sort(byQuality)[0];
-  if (combined) {
-    return { videoPath: combined.url, audioPath: "", streamed: false };
-  }
 
   const video = formats
     .filter((format) => hasVideo(format) && !hasAudio(format) && withinQuality(format) && isPlainHttpMedia(format))
@@ -1027,13 +1021,16 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const audio = formats
     .filter((format) => hasAudio(format) && !hasVideo(format) && isPlainHttpMedia(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+  if (video && audio && (!combined || qualityScore(video) > qualityScore(combined))) {
+    return { videoPath: video.url, audioPath: audio.url, streamed: false };
+  }
+  if (combined) {
+    return { videoPath: combined.url, audioPath: "", streamed: false };
+  }
 
   const streamedCombined = formats
     .filter((format) => hasVideo(format) && hasAudio(format) && withinStreamQuality(format, maxHeight))
     .sort(byQuality)[0];
-  if (!video && streamedCombined) {
-    return { videoPath: streamedCombined.url, audioPath: "", streamed: true };
-  }
 
   const streamedVideo = formats
     .filter((format) => hasVideo(format) && !hasAudio(format) && withinStreamQuality(format, maxHeight))
@@ -1041,11 +1038,22 @@ async function resolveMediaFiles(sourceUrl, quality) {
   const streamedAudio = formats
     .filter((format) => hasAudio(format) && !hasVideo(format))
     .sort((a, b) => Number(b.abr || b.tbr || 0) - Number(a.abr || a.tbr || 0))[0];
+  if (!video && streamedVideo && streamedAudio && (!streamedCombined || qualityScore(streamedVideo) > qualityScore(streamedCombined))) {
+    return { videoPath: streamedVideo.url, audioPath: streamedAudio.url, streamed: true };
+  }
+  if (!video && streamedCombined) {
+    return { videoPath: streamedCombined.url, audioPath: "", streamed: true };
+  }
   if (!video && streamedVideo) {
     return { videoPath: streamedVideo.url, audioPath: streamedAudio?.url || "", streamed: true };
   }
 
   if (!video) {
+    const infoProtocol = String(info.protocol || "");
+    const cleanInfoUrl = cleanMediaUrl(info.url);
+    if (cleanInfoUrl && !isStreamProtocol(infoProtocol)) {
+      return { videoPath: cleanInfoUrl, audioPath: "", streamed: false };
+    }
     throw statusError("В источнике не найден видеопоток.", 500);
   }
 
