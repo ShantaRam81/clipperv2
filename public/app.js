@@ -35,6 +35,7 @@ const loadingDetailEl = document.querySelector("#loadingDetail");
 const pasteFromClipboardBtn = document.querySelector("#pasteFromClipboardBtn");
 const commandMessageEl = document.querySelector("#commandMessage");
 const commandPanelEl = document.querySelector("#introState");
+const pasteRowEl = document.querySelector(".paste-row");
 
 let sourceDuration = 30;
 let selectedSourceUrl = "";
@@ -91,7 +92,13 @@ function bindEvents() {
     scheduleProbe();
   });
   pasteFromClipboardBtn?.addEventListener("click", pasteFromClipboard);
-  pasteFromClipboardBtn?.addEventListener("contextmenu", (event) => event.preventDefault());
+  pasteRowEl?.addEventListener("click", handlePasteRowClick);
+  pasteRowEl?.addEventListener("contextmenu", (event) => event.preventDefault());
+  urlInput.addEventListener("focus", () => {
+    if (uiState === "idle" && !commandPanelEl?.classList.contains("manual")) {
+      urlInput.blur();
+    }
+  });
   includeEmbeddedInput?.addEventListener("change", () => {
     localStorage.setItem("referenceClipperIncludeEmbedded", includeEmbeddedInput.checked ? "1" : "0");
     if (urlInput.value.trim()) scheduleProbe();
@@ -128,6 +135,7 @@ function scheduleProbe() {
 
 async function pasteFromClipboard(event) {
   event?.preventDefault();
+  event?.stopPropagation();
   if (!navigator.clipboard?.readText) {
     setMessage("Вставьте ссылку в поле вручную.");
     setManualPasteMode(true);
@@ -154,6 +162,12 @@ async function pasteFromClipboard(event) {
     setManualPasteMode(true);
     urlInput.focus();
   }
+}
+
+function handlePasteRowClick(event) {
+  if (uiState === "loading") return;
+  if (commandPanelEl?.classList.contains("manual") && event.target === urlInput) return;
+  pasteFromClipboard(event);
 }
 
 async function chooseOutputFolder() {
@@ -746,6 +760,7 @@ function setUiState(nextState, title = "", detail = "") {
   loadingStateEl.hidden = nextState !== "loading";
   pasteFromClipboardBtn.disabled = nextState === "loading";
   pasteFromClipboardBtn.textContent = nextState === "ready" ? "Paste from clipboard" : "Click to paste";
+  urlInput.readOnly = nextState === "idle" && !commandPanelEl?.classList.contains("manual");
 
   if (title) {
     loadingTitleEl.textContent = title;
@@ -757,6 +772,7 @@ function setUiState(nextState, title = "", detail = "") {
 
 function setManualPasteMode(enabled) {
   commandPanelEl?.classList.toggle("manual", enabled);
+  urlInput.readOnly = uiState === "idle" && !enabled;
 }
 
 async function chooseSaveFileHandle(fileName) {
