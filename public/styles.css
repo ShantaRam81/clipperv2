@@ -1243,11 +1243,13 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .app-shell[data-ui-state="ready"] .preview-selected-range {
-  top: -7px;
-  height: 76px;
-  min-width: 104px;
-  border: 9px solid #fbff58;
-  border-radius: 26px;
+  top: -5px;
+  height: 72px;
+  min-width: 116px;
+  border-style: solid;
+  border-color: #fbff58;
+  border-width: 6px 22px;
+  border-radius: 28px;
   background: transparent;
   box-shadow: none;
   z-index: 4;
