@@ -26,6 +26,9 @@ const filmstripEl = document.querySelector("#filmstrip");
 const filmFramesEl = document.querySelector("#filmFrames");
 const timeBubbleEl = document.querySelector("#timeBubble");
 const previewSelectedRangeEl = document.querySelector("#previewSelectedRange");
+const rangeTimeLabelsEl = document.querySelector("#rangeTimeLabels");
+const rangeStartLabelEl = document.querySelector("#rangeStartLabel");
+const rangeEndLabelEl = document.querySelector("#rangeEndLabel");
 const playPreviewBtn = document.querySelector(".play-preview");
 const previewVideoEl = document.querySelector("#previewVideo");
 const heroImageEl = document.querySelector("#heroImage");
@@ -525,11 +528,16 @@ function syncRange(source) {
   timeBubbleEl.textContent = formatTime(end);
 
   const left = (start / sourceDuration) * 100;
+  const right = (end / sourceDuration) * 100;
   const width = ((end - start) / sourceDuration) * 100;
   selectedRange.style.left = `${left}%`;
   selectedRange.style.width = `${width}%`;
   previewSelectedRangeEl.style.left = `${left}%`;
   previewSelectedRangeEl.style.width = `${width}%`;
+  rangeTimeLabelsEl.style.setProperty("--range-left", `${left}%`);
+  rangeTimeLabelsEl.style.setProperty("--range-right", `${right}%`);
+  rangeStartLabelEl.textContent = formatTimeShort(start);
+  rangeEndLabelEl.textContent = formatTimeShort(end);
   if (!previewVideoEl.paused) stopPreviewAtEnd();
 }
 
@@ -740,6 +748,12 @@ function formatTime(seconds) {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds - minutes * 60;
   return `${String(minutes).padStart(2, "0")}:${rest.toFixed(1).padStart(4, "0")}`;
+}
+
+function formatTimeShort(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds - minutes * 60);
+  return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
 function clamp(value, min, max) {
