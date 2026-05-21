@@ -1158,7 +1158,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .app-shell[data-ui-state="ready"] .timeline-block {
-  gap: 14px;
+  gap: 18px;
   padding: 12px;
 }
 
@@ -1204,7 +1204,8 @@ input[type="range"]::-moz-range-thumb {
 
 .app-shell[data-ui-state="ready"] .segment-preview {
   grid-template-columns: 64px minmax(0, 1fr);
-  min-height: 118px;
+  column-gap: 10px;
+  min-height: 112px;
   padding: 0;
   align-items: start;
 }
@@ -1225,25 +1226,26 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .app-shell[data-ui-state="ready"] .filmstrip {
-  height: 92px;
+  height: 112px;
   overflow: visible;
   border-radius: 0;
-  background: rgba(0, 0, 0, 0.24);
+  background: transparent;
 }
 
 .app-shell[data-ui-state="ready"] .film-frames {
-  top: 15px;
-  bottom: 15px;
+  top: 0;
+  bottom: auto;
   height: 62px;
   opacity: 0.86;
   overflow: hidden;
   border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
 }
 
 .app-shell[data-ui-state="ready"] .preview-selected-range {
-  top: 8px;
+  top: -7px;
   height: 76px;
-  min-width: 92px;
+  min-width: 104px;
   border: 9px solid #fbff58;
   border-radius: 26px;
   background: transparent;
@@ -1285,7 +1287,7 @@ input[type="range"]::-moz-range-thumb {
 
 .app-shell[data-ui-state="ready"] .range-time-label {
   position: absolute;
-  top: 84px;
+  top: 86px;
   color: rgba(236, 238, 241, 0.62);
   font-size: 20px;
   font-variant-numeric: tabular-nums;
@@ -1296,9 +1298,9 @@ input[type="range"]::-moz-range-thumb {
   content: "";
   position: absolute;
   left: 50%;
-  top: -37px;
+  top: -42px;
   width: 2px;
-  height: 30px;
+  height: 34px;
   transform: translateX(-50%);
   background: rgba(236, 238, 241, 0.56);
 }
@@ -1307,7 +1309,7 @@ input[type="range"]::-moz-range-thumb {
   content: "";
   position: absolute;
   left: 50%;
-  top: -13px;
+  top: -12px;
   width: 10px;
   height: 10px;
   transform: translateX(-50%);
