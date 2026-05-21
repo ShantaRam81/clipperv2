@@ -28,6 +28,7 @@ const timeBubbleEl = document.querySelector("#timeBubble");
 const previewSelectedRangeEl = document.querySelector("#previewSelectedRange");
 const playPreviewBtn = document.querySelector(".play-preview");
 const previewVideoEl = document.querySelector("#previewVideo");
+const heroImageEl = document.querySelector("#heroImage");
 const appShellEl = document.querySelector(".app-shell");
 const loadingStateEl = document.querySelector("#loadingState");
 const loadingTitleEl = document.querySelector("#loadingTitle");
@@ -106,6 +107,7 @@ function bindEvents() {
   tagInput?.addEventListener("keydown", handleTagKeydown);
   tagInput?.addEventListener("change", () => addTag(tagInput.value));
   playPreviewBtn.addEventListener("click", playSelectedPreview);
+  heroImageEl?.addEventListener("click", playSelectedPreview);
   refreshBtn?.addEventListener("click", () => setMessage("Библиотека отключена: фрагменты сохраняются только на устройство."));
   form.addEventListener("submit", saveClip);
 }
@@ -214,7 +216,7 @@ async function probeSource() {
     });
     if (token !== probeToken) return;
 
-    renderVideoOptions(data.options || []);
+    renderVideoOptions(data.options?.length ? data.options : [data]);
     await applySource(data);
     setMessage(data.message || "Источник распознан.");
     setUiState("ready");
@@ -336,6 +338,7 @@ async function applySource(data) {
   sourceTitleEl.textContent = data.title || data.provider || "Источник";
   sourceMetaEl.textContent = `${data.provider} · ${formatTime(sourceDuration)}`;
   thumbnailEl.src = data.thumbnail || inlinePlaceholder();
+  heroImageEl.src = data.thumbnail || inlinePlaceholder();
   renderFilmFrames(data.thumbnail || inlinePlaceholder());
   currentFilmstripUrl = selectedSourceUrl;
   await buildInitialFilmstrip(selectedSourceUrl, sourceDuration, selectedPreviewUrl);
@@ -428,6 +431,7 @@ function renderGeneratedFilmFrames(frames) {
 function updateGeneratedThumbnail(src) {
   if (!src) return;
   thumbnailEl.src = src;
+  heroImageEl.src = src;
   const activeOptionImage = videoOptionsEl.querySelector(".video-option.active img");
   if (activeOptionImage) activeOptionImage.src = src;
 }
