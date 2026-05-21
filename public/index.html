@@ -26,9 +26,18 @@
         </header>
 
         <section id="introState" class="command-panel" aria-label="Источник">
+          <div class="intro-copy" aria-label="Поддерживаемые источники">
+            <p>You can clip and export any<br>fragment from videos from</p>
+            <div class="source-badges">
+              <span><i aria-hidden="true">▶</i>YouTube</span>
+              <span><i aria-hidden="true">Be</i>Behance</span>
+              <span><i aria-hidden="true">P</i>Pinterest</span>
+              <span><i aria-hidden="true">◎</i>Instagram</span>
+            </div>
+          </div>
           <div class="paste-row">
             <input id="url" type="url" placeholder="Paste a Behance, Vimeo or YouTube URL" autocomplete="off" required>
-            <button type="button" id="pasteFromClipboardBtn" class="paste-cta">Paste from clipboard</button>
+            <button type="button" id="pasteFromClipboardBtn" class="paste-cta">Click to paste</button>
           </div>
           <div id="commandMessage" class="command-message" aria-live="polite"></div>
         </section>

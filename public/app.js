@@ -34,6 +34,7 @@ const loadingTitleEl = document.querySelector("#loadingTitle");
 const loadingDetailEl = document.querySelector("#loadingDetail");
 const pasteFromClipboardBtn = document.querySelector("#pasteFromClipboardBtn");
 const commandMessageEl = document.querySelector("#commandMessage");
+const commandPanelEl = document.querySelector("#introState");
 
 let sourceDuration = 30;
 let selectedSourceUrl = "";
@@ -129,6 +130,7 @@ async function pasteFromClipboard(event) {
   event?.preventDefault();
   if (!navigator.clipboard?.readText) {
     setMessage("Вставьте ссылку в поле вручную.");
+    setManualPasteMode(true);
     urlInput.focus();
     return;
   }
@@ -139,14 +141,17 @@ async function pasteFromClipboard(event) {
     if (!value) {
       setUiState("idle");
       setMessage("Буфер обмена пуст.");
+      setManualPasteMode(false);
       urlInput.focus();
       return;
     }
+    setManualPasteMode(false);
     urlInput.value = value;
     await probeSource();
   } catch (error) {
     setUiState("idle");
     setMessage("Вставьте ссылку в поле вручную.");
+    setManualPasteMode(true);
     urlInput.focus();
   }
 }
@@ -740,6 +745,7 @@ function setUiState(nextState, title = "", detail = "") {
   appShellEl.dataset.uiState = nextState;
   loadingStateEl.hidden = nextState !== "loading";
   pasteFromClipboardBtn.disabled = nextState === "loading";
+  pasteFromClipboardBtn.textContent = nextState === "ready" ? "Paste from clipboard" : "Click to paste";
 
   if (title) {
     loadingTitleEl.textContent = title;
@@ -747,6 +753,10 @@ function setUiState(nextState, title = "", detail = "") {
   if (detail) {
     loadingDetailEl.textContent = detail;
   }
+}
+
+function setManualPasteMode(enabled) {
+  commandPanelEl?.classList.toggle("manual", enabled);
 }
 
 async function chooseSaveFileHandle(fileName) {

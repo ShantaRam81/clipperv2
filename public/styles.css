@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --bg: #0b0d0e;
+  --bg: #202020;
   --surface: #111417;
   --surface-2: #171b20;
   --ink: #eceef1;
@@ -20,17 +20,15 @@
 }
 
 html {
-  background:
-    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.05), transparent 26%),
-    linear-gradient(145deg, #0b0d0e 0%, #101215 52%, #0b0d0e 100%);
+  background: var(--bg);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   background:
-    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 44px 44px,
-    transparent;
+    radial-gradient(circle, rgba(255, 255, 255, 0.055) 1.5px, transparent 1.5px) 0 0 / 28px 28px,
+    #202020;
   color: var(--ink);
   font-family: "Inter Tight", "SF Pro Display", "SF Pro Text", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
@@ -153,6 +151,10 @@ h2 {
   animation: rise-in 280ms ease;
 }
 
+.intro-copy {
+  display: none;
+}
+
 .loading-state[hidden] {
   display: none;
 }
@@ -166,7 +168,7 @@ h2 {
   padding: 8px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.045);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
 }
 
 .command-message {
@@ -191,12 +193,11 @@ h2 {
 }
 
 .paste-cta:hover {
-  transform: translateY(-1px);
   background: #f4f5f7;
 }
 
 .paste-cta:active {
-  transform: translateY(0);
+  transform: scale(0.995);
 }
 
 .paste-cta:disabled {
@@ -249,7 +250,7 @@ h2 {
   border: 0;
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(22, 26, 31, 0.82), rgba(14, 17, 20, 0.88));
-  box-shadow: 0 14px 46px rgba(0, 0, 0, 0.16);
+  box-shadow: none;
   backdrop-filter: blur(14px);
 }
 
@@ -739,7 +740,7 @@ input[type="range"]::-moz-range-thumb {
   border: 0;
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(18, 21, 24, 0.72), rgba(12, 14, 16, 0.88));
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.16);
+  box-shadow: none;
   backdrop-filter: blur(14px);
 }
 
@@ -782,6 +783,162 @@ input[type="range"]::-moz-range-thumb {
 .app-shell[data-ui-state="idle"],
 .app-shell[data-ui-state="loading"] {
   grid-template-columns: 1fr;
+  max-width: none;
+  padding: 0;
+}
+
+.app-shell[data-ui-state="idle"] {
+  min-height: 100vh;
+}
+
+.app-shell[data-ui-state="idle"] .composer {
+  min-height: 100vh;
+  align-content: center;
+}
+
+.app-shell[data-ui-state="idle"] .topbar,
+.app-shell[data-ui-state="loading"] .topbar {
+  display: none;
+}
+
+.app-shell[data-ui-state="idle"] .command-panel {
+  width: min(820px, calc(100vw - 48px));
+  min-height: 42vh;
+  justify-self: center;
+  align-content: space-between;
+  gap: clamp(72px, 14vh, 170px);
+}
+
+.app-shell[data-ui-state="idle"] .intro-copy {
+  display: grid;
+  justify-items: center;
+  gap: 28px;
+  color: rgba(236, 238, 241, 0.27);
+  text-align: center;
+}
+
+.app-shell[data-ui-state="idle"] .intro-copy p {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.source-badges {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 12px 34px;
+  justify-content: center;
+  color: rgba(236, 238, 241, 0.34);
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.source-badges span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.source-badges i {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: rgba(236, 238, 241, 0.28);
+  color: #202020;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.app-shell[data-ui-state="idle"] .paste-row {
+  position: relative;
+  min-height: 74px;
+  padding: 0;
+  border: 1px solid rgba(236, 238, 241, 0.13);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.app-shell[data-ui-state="idle"] #url {
+  height: 72px;
+  border-radius: 13px;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+}
+
+.app-shell[data-ui-state="idle"] #url::placeholder {
+  color: transparent;
+}
+
+.app-shell[data-ui-state="idle"] .paste-cta {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 13px;
+  background: transparent;
+  color: rgba(236, 238, 241, 0.33);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.app-shell[data-ui-state="idle"] .paste-cta:hover {
+  background: rgba(255, 255, 255, 0.025);
+  color: rgba(236, 238, 241, 0.48);
+}
+
+.app-shell[data-ui-state="idle"] .command-message {
+  min-height: 20px;
+  text-align: center;
+  color: rgba(236, 238, 241, 0.36);
+}
+
+.app-shell[data-ui-state="idle"] .command-panel.manual .paste-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px;
+}
+
+.app-shell[data-ui-state="idle"] .command-panel.manual #url {
+  height: 56px;
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--ink);
+  caret-color: var(--ink);
+}
+
+.app-shell[data-ui-state="idle"] .command-panel.manual #url::placeholder {
+  color: rgba(236, 238, 241, 0.3);
+}
+
+.app-shell[data-ui-state="idle"] .command-panel.manual .paste-cta {
+  position: static;
+  width: auto;
+  height: 56px;
+  padding: 0 18px;
+  background: rgba(236, 238, 241, 0.9);
+  color: #202020;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-shell[data-ui-state="loading"] .composer {
+  min-height: 100vh;
+  align-content: center;
+}
+
+.app-shell[data-ui-state="loading"] .command-panel {
+  display: none;
+}
+
+.app-shell[data-ui-state="loading"] .loading-state {
+  width: min(820px, calc(100vw - 48px));
+  justify-self: center;
+  border: 1px solid rgba(236, 238, 241, 0.13);
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: none;
 }
 
 .app-shell[data-ui-state="idle"] .clip-card,
@@ -905,6 +1062,33 @@ input[type="range"]::-moz-range-thumb {
   .paste-row {
     grid-template-columns: 1fr;
     padding: 8px;
+  }
+
+  .app-shell[data-ui-state="idle"] .command-panel {
+    width: min(100%, calc(100vw - 28px));
+    min-height: 46vh;
+    gap: 58px;
+  }
+
+  .app-shell[data-ui-state="idle"] .intro-copy p {
+    font-size: 16px;
+  }
+
+  .source-badges {
+    gap: 10px 24px;
+    font-size: 15px;
+  }
+
+  .app-shell[data-ui-state="idle"] .paste-row {
+    min-height: 64px;
+  }
+
+  .app-shell[data-ui-state="idle"] #url {
+    height: 62px;
+  }
+
+  .app-shell[data-ui-state="idle"] .paste-cta {
+    font-size: 17px;
   }
 
   .paste-cta {
