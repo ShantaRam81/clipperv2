@@ -23,7 +23,7 @@ const tagInput = document.querySelector("#tagInput");
 const tagSuggestionsEl = document.querySelector("#tagSuggestions");
 const tagChipsEl = document.querySelector("#tagChips");
 const qualityOptionEls = [...document.querySelectorAll(".quality-option")];
-const hashtagOptionEls = [...document.querySelectorAll(".hashtag-option[data-tag]")];
+const hashtagOptionsEl = document.querySelector(".hashtag-options");
 const addTagOptionBtn = document.querySelector("#addTagOption");
 const exportStartTimeEl = document.querySelector("#exportStartTime");
 const exportEndTimeEl = document.querySelector("#exportEndTime");
@@ -55,6 +55,7 @@ let probeToken = 0;
 let activeDrag = null;
 let currentFilmstripUrl = "";
 let canSelectOutputFolder = true;
+let configuredTags = ["Motion", "Transition", "Animate", "Flow", "Particles", "Background", "Scenario"];
 let selectedTags = ["Transition", "Background"];
 let savedTags = [];
 let showingAllOptions = false;
@@ -70,6 +71,7 @@ async function init() {
   loadPreferences();
   bindEvents();
   loadSavedTags();
+  await loadHashtags();
   renderTags();
   await loadHealth();
   renderClips([]);
@@ -116,9 +118,6 @@ function bindEvents() {
   tagInput?.addEventListener("change", () => addTag(tagInput.value));
   qualityOptionEls.forEach((button) => {
     button.addEventListener("click", () => setQuality(button.dataset.quality));
-  });
-  hashtagOptionEls.forEach((button) => {
-    button.addEventListener("click", () => toggleTag(button.dataset.tag));
   });
   addTagOptionBtn?.addEventListener("click", addCustomTag);
   playPreviewBtn.addEventListener("click", playSelectedPreview);
@@ -793,19 +792,28 @@ function setSaveBusy(busy) {
 }
 
 function setUiState(nextState, title = "", detail = "") {
-  uiState = nextState;
-  appShellEl.dataset.uiState = nextState;
-  loadingStateEl.hidden = nextState !== "loading";
-  pasteFromClipboardBtn.disabled = nextState === "loading";
-  pasteFromClipboardBtn.textContent = nextState === "ready" ? "Paste from clipboard" : "Click to paste";
-  urlInput.readOnly = nextState === "idle" && !commandPanelEl?.classList.contains("manual");
+  const previousState = uiState;
+  const applyState = () => {
+    uiState = nextState;
+    appShellEl.dataset.uiState = nextState;
+    loadingStateEl.hidden = nextState !== "loading";
+    pasteFromClipboardBtn.disabled = nextState === "loading";
+    pasteFromClipboardBtn.textContent = nextState === "ready" ? "Paste from clipboard" : "Click to paste";
+    urlInput.readOnly = nextState === "idle" && !commandPanelEl?.classList.contains("manual");
 
-  if (title) {
-    loadingTitleEl.textContent = title;
+    if (title) {
+      loadingTitleEl.textContent = title;
+    }
+    if (detail) {
+      loadingDetailEl.textContent = detail;
+    }
+  };
+
+  if (document.startViewTransition && previousState !== nextState) {
+    document.startViewTransition(applyState);
+    return;
   }
-  if (detail) {
-    loadingDetailEl.textContent = detail;
-  }
+  applyState();
 }
 
 function setManualPasteMode(enabled) {
@@ -834,7 +842,45 @@ function toggleTag(value) {
 
 function addCustomTag() {
   const value = window.prompt?.("Tag name");
-  if (value) addTag(value);
+  if (!value) return;
+  const tag = sanitizeTag(value);
+  if (!tag) return;
+  if (!configuredTags.includes(tag)) {
+    configuredTags.push(tag);
+    renderHashtagOptions();
+  }
+  addTag(tag);
+}
+
+async function loadHashtags() {
+  try {
+    const response = await fetch("/hashtags.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("Hashtags config not found.");
+    const data = await response.json();
+    const nextTags = Array.isArray(data.tags) ? data.tags.map(sanitizeTag).filter(Boolean) : [];
+    const nextSelected = Array.isArray(data.selected) ? data.selected.map(sanitizeTag).filter(Boolean) : [];
+    if (nextTags.length) configuredTags = [...new Set(nextTags)];
+    if (nextSelected.length) selectedTags = [...new Set(nextSelected)];
+  } catch {
+    configuredTags = configuredTags.map(sanitizeTag).filter(Boolean);
+  }
+  renderHashtagOptions();
+}
+
+function renderHashtagOptions() {
+  if (!hashtagOptionsEl) return;
+  const addButton = addTagOptionBtn;
+  hashtagOptionsEl.innerHTML = "";
+  for (const tag of configuredTags) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "hashtag-option";
+    button.dataset.tag = tag;
+    button.textContent = tag;
+    button.addEventListener("click", () => toggleTag(tag));
+    hashtagOptionsEl.append(button);
+  }
+  if (addButton) hashtagOptionsEl.append(addButton);
 }
 
 async function chooseSaveFileHandle(fileName) {
@@ -938,7 +984,7 @@ function renderTags() {
     button.addEventListener("click", () => removeTag(tag));
     tagChipsEl.append(button);
   }
-  hashtagOptionEls.forEach((button) => {
+  hashtagOptionsEl?.querySelectorAll(".hashtag-option[data-tag]").forEach((button) => {
     button.classList.toggle("active", selectedTags.includes(sanitizeTag(button.dataset.tag)));
   });
 

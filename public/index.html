@@ -39,6 +39,13 @@
             <input id="url" type="url" placeholder="Paste a Behance, Vimeo or YouTube URL" autocomplete="off" required>
             <button type="button" id="pasteFromClipboardBtn" class="paste-cta">Click to paste</button>
           </div>
+          <label class="toggle-field embedded-toggle" for="includeEmbedded">
+            <input id="includeEmbedded" type="checkbox" checked>
+            <i aria-hidden="true"></i>
+            <span>
+              <strong>Embedded video</strong>
+            </span>
+          </label>
           <div id="commandMessage" class="command-message" aria-live="polite"></div>
         </section>
 
@@ -52,14 +59,7 @@
 
         <form id="clipForm" class="clip-card">
           <div class="source-panel panel">
-            <label class="toggle-field full" for="includeEmbedded">
-              <span>
-                <strong>Embedded video</strong>
-              </span>
-              <input id="includeEmbedded" type="checkbox" checked>
-              <i aria-hidden="true"></i>
-            </label>
-
+            <h2>Sources</h2>
             <div id="sourcePreview" class="source-preview" hidden>
               <img id="thumbnail" alt="">
               <div>
@@ -144,13 +144,6 @@
             <div class="export-section hashtag-section">
               <span class="export-label">Hashtags</span>
               <div class="hashtag-options" aria-label="Hashtags">
-                <button type="button" class="hashtag-option" data-tag="Motion">Motion</button>
-                <button type="button" class="hashtag-option active" data-tag="Transition">Transition</button>
-                <button type="button" class="hashtag-option" data-tag="Animate">Animate</button>
-                <button type="button" class="hashtag-option" data-tag="Flow">Flow</button>
-                <button type="button" class="hashtag-option" data-tag="Particles">Particles</button>
-                <button type="button" class="hashtag-option active" data-tag="Background">Background</button>
-                <button type="button" class="hashtag-option" data-tag="Scenario">Scenario</button>
                 <button type="button" class="hashtag-option add-tag-option" id="addTagOption"><span aria-hidden="true">＋</span>Add</button>
               </div>
             </div>
