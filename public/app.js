@@ -22,6 +22,11 @@ const qualityInput = document.querySelector("#quality");
 const tagInput = document.querySelector("#tagInput");
 const tagSuggestionsEl = document.querySelector("#tagSuggestions");
 const tagChipsEl = document.querySelector("#tagChips");
+const qualityOptionEls = [...document.querySelectorAll(".quality-option")];
+const hashtagOptionEls = [...document.querySelectorAll(".hashtag-option[data-tag]")];
+const addTagOptionBtn = document.querySelector("#addTagOption");
+const exportStartTimeEl = document.querySelector("#exportStartTime");
+const exportEndTimeEl = document.querySelector("#exportEndTime");
 const filmstripEl = document.querySelector("#filmstrip");
 const filmFramesEl = document.querySelector("#filmFrames");
 const timeBubbleEl = document.querySelector("#timeBubble");
@@ -50,7 +55,7 @@ let probeToken = 0;
 let activeDrag = null;
 let currentFilmstripUrl = "";
 let canSelectOutputFolder = true;
-let selectedTags = [];
+let selectedTags = ["Transition", "Background"];
 let savedTags = [];
 let showingAllOptions = false;
 let currentOptions = [];
@@ -109,6 +114,13 @@ function bindEvents() {
   });
   tagInput?.addEventListener("keydown", handleTagKeydown);
   tagInput?.addEventListener("change", () => addTag(tagInput.value));
+  qualityOptionEls.forEach((button) => {
+    button.addEventListener("click", () => setQuality(button.dataset.quality));
+  });
+  hashtagOptionEls.forEach((button) => {
+    button.addEventListener("click", () => toggleTag(button.dataset.tag));
+  });
+  addTagOptionBtn?.addEventListener("click", addCustomTag);
   playPreviewBtn.addEventListener("click", playSelectedPreview);
   heroImageEl?.addEventListener("click", playSelectedPreview);
   refreshBtn?.addEventListener("click", () => setMessage("Библиотека отключена: фрагменты сохраняются только на устройство."));
@@ -526,6 +538,8 @@ function syncRange(source) {
   durationInput.value = `${(end - start).toFixed(1)} сек`;
   rangeLabel.textContent = `${formatTime(start)} - ${formatTime(end)}`;
   timeBubbleEl.textContent = formatTime(end);
+  exportStartTimeEl.textContent = formatTimeExport(start);
+  exportEndTimeEl.textContent = formatTimeExport(end);
 
   const left = (start / sourceDuration) * 100;
   const right = (end / sourceDuration) * 100;
@@ -756,6 +770,12 @@ function formatTimeShort(seconds) {
   return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
+function formatTimeExport(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds - minutes * 60;
+  return `${String(minutes).padStart(2, "0")}:${rest.toFixed(2).padStart(5, "0")}`;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -769,7 +789,7 @@ function setSaveBusy(busy) {
   const button = document.querySelector("#saveBtn");
   if (!button) return;
   button.disabled = busy;
-  button.textContent = busy ? "Готовлю файл..." : "Сохранить фрагмент";
+  button.innerHTML = busy ? "Preparing..." : '<span aria-hidden="true">↓</span>Export';
 }
 
 function setUiState(nextState, title = "", detail = "") {
@@ -791,6 +811,30 @@ function setUiState(nextState, title = "", detail = "") {
 function setManualPasteMode(enabled) {
   commandPanelEl?.classList.toggle("manual", enabled);
   urlInput.readOnly = uiState === "idle" && !enabled;
+}
+
+function setQuality(value) {
+  if (!value) return;
+  qualityInput.value = value;
+  qualityOptionEls.forEach((button) => {
+    button.classList.toggle("active", button.dataset.quality === value);
+  });
+}
+
+function toggleTag(value) {
+  const tag = sanitizeTag(value);
+  if (!tag) return;
+  if (selectedTags.includes(tag)) {
+    removeTag(tag);
+    return;
+  }
+  selectedTags.push(tag);
+  renderTags();
+}
+
+function addCustomTag() {
+  const value = window.prompt?.("Tag name");
+  if (value) addTag(value);
 }
 
 async function chooseSaveFileHandle(fileName) {
@@ -894,6 +938,9 @@ function renderTags() {
     button.addEventListener("click", () => removeTag(tag));
     tagChipsEl.append(button);
   }
+  hashtagOptionEls.forEach((button) => {
+    button.classList.toggle("active", selectedTags.includes(sanitizeTag(button.dataset.tag)));
+  });
 
   if (!tagSuggestionsEl) return;
   tagSuggestionsEl.innerHTML = "";

@@ -120,9 +120,54 @@
           </section>
 
           <div class="export-panel panel">
+            <h2>Export Settings</h2>
+
+            <div class="export-section duration-section">
+              <span class="export-label">Duration</span>
+              <div class="duration-pills">
+                <div class="duration-pill"><span aria-hidden="true">⏱</span><output id="exportStartTime">00:00.00</output></div>
+                <i aria-hidden="true"></i>
+                <div class="duration-pill"><span aria-hidden="true">⏱</span><output id="exportEndTime">00:05.00</output></div>
+              </div>
+            </div>
+
+            <div class="export-section quality-section">
+              <span class="export-label">Quality</span>
+              <div class="quality-options" aria-label="Quality">
+                <button type="button" class="quality-option" data-quality="480">480</button>
+                <button type="button" class="quality-option active" data-quality="720">720</button>
+                <button type="button" class="quality-option" data-quality="1080">1080</button>
+                <button type="button" class="quality-option" data-quality="source">src</button>
+              </div>
+            </div>
+
+            <div class="export-section hashtag-section">
+              <span class="export-label">Hashtags</span>
+              <div class="hashtag-options" aria-label="Hashtags">
+                <button type="button" class="hashtag-option" data-tag="Motion">Motion</button>
+                <button type="button" class="hashtag-option active" data-tag="Transition">Transition</button>
+                <button type="button" class="hashtag-option" data-tag="Animate">Animate</button>
+                <button type="button" class="hashtag-option" data-tag="Flow">Flow</button>
+                <button type="button" class="hashtag-option" data-tag="Particles">Particles</button>
+                <button type="button" class="hashtag-option active" data-tag="Background">Background</button>
+                <button type="button" class="hashtag-option" data-tag="Scenario">Scenario</button>
+                <button type="button" class="hashtag-option add-tag-option" id="addTagOption"><span aria-hidden="true">＋</span>Add</button>
+              </div>
+            </div>
+
+            <div class="export-section additionally-section">
+              <span class="export-label">Additionally</span>
+              <label class="sound-toggle">
+                <span aria-hidden="true">♬</span>
+                <strong>Sound</strong>
+                <input id="soundEnabled" type="checkbox" checked>
+                <i aria-hidden="true"></i>
+              </label>
+            </div>
+
             <label class="field full">
               <span>Name</span>
-              <input id="title" type="text" placeholder="Например: kinetic typography / logo reveal" required>
+              <input id="title" type="text" placeholder="Например: kinetic typography / logo reveal">
             </label>
 
             <label class="field full">
@@ -141,7 +186,7 @@
                 <option value="source">Исходное</option>
               </select>
             </label>
-            <button type="submit" id="saveBtn">Сохранить фрагмент</button>
+            <button type="submit" id="saveBtn"><span aria-hidden="true">↓</span>Export</button>
           </div>
         </form>
       </section>

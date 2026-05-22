@@ -967,14 +967,14 @@ input[type="range"]::-moz-range-thumb {
 
 .app-shell[data-ui-state="ready"] {
   grid-template-columns: 1fr;
-  max-width: 1180px;
+  max-width: 1540px;
   gap: 12px;
   padding: 72px 18px 40px;
 }
 
 .app-shell[data-ui-state="ready"] .composer {
   justify-self: center;
-  width: min(100%, 1120px);
+  width: min(100%, 1460px);
   gap: 12px;
 }
 
@@ -1040,10 +1040,9 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .app-shell[data-ui-state="ready"] .clip-card {
-  grid-template-columns: 320px minmax(0, 660px);
+  grid-template-columns: 320px minmax(0, 660px) 430px;
   grid-template-areas:
-    "source timeline"
-    "source export";
+    "source timeline export";
   justify-content: center;
   gap: 12px;
 }
@@ -1330,39 +1329,195 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .app-shell[data-ui-state="ready"] .export-panel {
-  position: static;
+  grid-area: export;
+  position: sticky;
+  top: 32px;
+  display: grid;
+  align-content: start;
+  gap: 26px;
+  width: 100%;
+  min-height: 780px;
+  padding: 38px 32px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.app-shell[data-ui-state="ready"] .export-panel h2 {
+  margin: 0 0 10px;
+  color: rgba(246, 247, 249, 0.9);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.export-section {
+  display: grid;
+  gap: 14px;
+}
+
+.export-label {
+  color: rgba(236, 238, 241, 0.52);
+  font-size: 29px;
+  line-height: 1;
+}
+
+.duration-pills {
+  display: grid;
+  grid-template-columns: 1fr 22px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.duration-pills > i {
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(236, 238, 241, 0.13);
+}
+
+.duration-pill {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: fit-content;
-  padding: 0;
-  background: transparent;
+  justify-content: center;
+  gap: 9px;
+  height: 58px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(236, 238, 241, 0.66);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.duration-pill span {
+  color: rgba(236, 238, 241, 0.5);
+  font-size: 24px;
+}
+
+.quality-options,
+.hashtag-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 12px;
+}
+
+.quality-option,
+.hashtag-option {
+  height: 58px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(236, 238, 241, 0.67);
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.quality-option {
+  min-width: 78px;
+  padding: 0 22px;
+}
+
+.hashtag-option {
+  padding: 0 20px;
+}
+
+.quality-option.active,
+.hashtag-option.active {
+  color: rgba(246, 247, 249, 0.9);
+}
+
+.quality-option.active::before,
+.hashtag-option.active::before {
+  content: "";
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  margin-right: 12px;
+  border-radius: 50%;
+  background: #fbff58;
+  vertical-align: 1px;
+}
+
+.add-tag-option {
+  background: rgba(246, 247, 249, 0.9);
+  color: #222;
+}
+
+.add-tag-option span {
+  margin-right: 10px;
+}
+
+.sound-toggle {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 74px;
+  align-items: center;
+  gap: 14px;
+  height: 74px;
+  padding: 0 22px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(236, 238, 241, 0.66);
+}
+
+.sound-toggle > span {
+  font-size: 24px;
+}
+
+.sound-toggle strong {
+  font-size: 27px;
+  font-weight: 500;
+}
+
+.sound-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sound-toggle i {
+  position: relative;
+  width: 66px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.sound-toggle i::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #202020;
+  transition: transform 180ms ease;
+}
+
+.sound-toggle input:checked + i {
+  background: #fbff58;
+}
+
+.sound-toggle input:checked + i::after {
+  transform: translateX(32px);
 }
 
 .app-shell[data-ui-state="ready"] .export-panel .field.full,
-.app-shell[data-ui-state="ready"] .tag-chips {
-  display: none;
-}
-
+.app-shell[data-ui-state="ready"] .tag-chips,
 .app-shell[data-ui-state="ready"] .export-panel .field {
-  width: 84px;
-}
-
-.app-shell[data-ui-state="ready"] .export-panel .field span {
   display: none;
 }
 
-.app-shell[data-ui-state="ready"] select,
 .app-shell[data-ui-state="ready"] #saveBtn {
-  height: 42px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.88);
-}
-
-.app-shell[data-ui-state="ready"] #saveBtn {
-  width: 118px;
-  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  height: 88px;
+  margin-top: 8px;
+  border-radius: 14px;
+  background: #fbff58;
+  color: #171717;
+  font-size: 29px;
+  font-weight: 800;
 }
 
 @keyframes spin {
@@ -1447,6 +1602,22 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
+@media (max-width: 1240px) {
+  .app-shell[data-ui-state="ready"] .clip-card {
+    grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-areas:
+      "source timeline"
+      "export export";
+  }
+
+  .app-shell[data-ui-state="ready"] .export-panel {
+    position: static;
+    width: min(100%, 760px);
+    min-height: auto;
+    justify-self: center;
+  }
+}
+
 @media (max-width: 640px) {
   .app-shell {
     padding: 12px;
@@ -1528,6 +1699,52 @@ input[type="range"]::-moz-range-thumb {
   .time-inputs,
   .export-panel {
     grid-template-columns: 1fr;
+  }
+
+  .app-shell[data-ui-state="ready"] .clip-card {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "source"
+      "timeline"
+      "export";
+  }
+
+  .app-shell[data-ui-state="ready"] .export-panel {
+    width: 100%;
+    padding: 24px 18px;
+    border-radius: 24px;
+    gap: 22px;
+  }
+
+  .app-shell[data-ui-state="ready"] .export-panel h2 {
+    font-size: 28px;
+  }
+
+  .export-label {
+    font-size: 23px;
+  }
+
+  .duration-pills {
+    grid-template-columns: 1fr;
+  }
+
+  .duration-pills > i {
+    display: none;
+  }
+
+  .quality-option,
+  .hashtag-option {
+    height: 52px;
+    font-size: 20px;
+  }
+
+  .sound-toggle strong {
+    font-size: 22px;
+  }
+
+  .app-shell[data-ui-state="ready"] #saveBtn {
+    height: 74px;
+    font-size: 24px;
   }
 
   .video-option {
