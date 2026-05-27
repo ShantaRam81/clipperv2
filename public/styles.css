@@ -990,6 +990,7 @@ input[type="range"]::-moz-range-thumb {
 
 .app-shell[data-ui-state="ready"] .topbar {
   display: grid;
+  grid-template-columns: max-content;
   justify-items: center;
   justify-self: center;
   width: fit-content;
@@ -1003,11 +1004,14 @@ input[type="range"]::-moz-range-thumb {
 
 .app-shell[data-ui-state="ready"] .status {
   min-width: auto;
+  width: max-content;
   height: 34px;
   padding: 0 16px;
   background: rgba(255, 255, 73, 0.12);
   color: #fbff58;
   font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .app-shell[data-ui-state="ready"] .status::before {
@@ -1037,10 +1041,14 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .app-shell[data-ui-state="ready"] #url {
+  min-width: 0;
   height: 60px;
+  overflow: hidden;
   border-radius: 14px;
   background: var(--solid-field);
   color: rgba(236, 238, 241, 0.62);
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-align: center;
   font-size: 18px;
 }
@@ -1707,6 +1715,35 @@ input[type="range"]::-moz-range-thumb {
   .status {
     grid-column: 1 / -1;
     width: fit-content;
+  }
+
+  .app-shell[data-ui-state="ready"] .topbar {
+    grid-template-columns: max-content;
+  }
+
+  .app-shell[data-ui-state="ready"] .status {
+    grid-column: auto;
+    height: 32px;
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
+  .app-shell[data-ui-state="ready"] .command-panel {
+    width: 100%;
+  }
+
+  .app-shell[data-ui-state="ready"] .paste-row {
+    min-height: 58px;
+    padding: 5px;
+    border-radius: 15px;
+  }
+
+  .app-shell[data-ui-state="ready"] #url {
+    height: 48px;
+    padding: 0 12px;
+    border-radius: 11px;
+    font-size: 13px;
+    text-align: left;
   }
 
   h1 {
