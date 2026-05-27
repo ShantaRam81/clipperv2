@@ -63,11 +63,13 @@ let currentOptions = [];
 let isSaving = false;
 let hlsPlayer = null;
 let uiState = "idle";
+const isTouchInput = window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 
 init();
 
 async function init() {
   setUiState("idle");
+  if (isTouchInput) setManualPasteMode(true);
   loadPreferences();
   bindEvents();
   loadSavedTags();
@@ -99,14 +101,16 @@ function bindEvents() {
     currentOptions = [];
     videoOptionsEl.hidden = true;
     previewEl.hidden = true;
-    setUiState(urlInput.value.trim() ? "loading" : "idle", "Проверка", "Ищу видео и длительность.");
+    if (!urlInput.value.trim()) setUiState("idle");
     scheduleProbe();
   });
   pasteFromClipboardBtn?.addEventListener("click", pasteFromClipboard);
   pasteRowEl?.addEventListener("click", handlePasteRowClick);
-  pasteRowEl?.addEventListener("contextmenu", (event) => event.preventDefault());
+  if (!isTouchInput) {
+    pasteRowEl?.addEventListener("contextmenu", (event) => event.preventDefault());
+  }
   urlInput.addEventListener("focus", () => {
-    if (uiState === "idle" && !commandPanelEl?.classList.contains("manual")) {
+    if (!isTouchInput && uiState === "idle" && !commandPanelEl?.classList.contains("manual")) {
       urlInput.blur();
     }
   });
@@ -161,7 +165,7 @@ async function pasteFromClipboard(event) {
 
   setUiState("loading", "Paste", "Читаю буфер обмена.");
   try {
-    const value = (await navigator.clipboard.readText()).trim();
+    const value = (await readClipboardText()).trim();
     if (!value) {
       setUiState("idle");
       setMessage("Буфер обмена пуст.");
@@ -182,8 +186,16 @@ async function pasteFromClipboard(event) {
 
 function handlePasteRowClick(event) {
   if (uiState === "loading") return;
-  if (commandPanelEl?.classList.contains("manual") && event.target === urlInput) return;
+  if (event.target === urlInput && (isTouchInput || commandPanelEl?.classList.contains("manual"))) return;
+  if (isTouchInput && event.target !== pasteFromClipboardBtn) return;
   pasteFromClipboard(event);
+}
+
+function readClipboardText() {
+  const timeout = new Promise((_, reject) => {
+    window.setTimeout(() => reject(new Error("Clipboard timeout")), 1500);
+  });
+  return Promise.race([navigator.clipboard.readText(), timeout]);
 }
 
 async function chooseOutputFolder() {
@@ -799,7 +811,7 @@ function setUiState(nextState, title = "", detail = "") {
     loadingStateEl.hidden = nextState !== "loading";
     pasteFromClipboardBtn.disabled = nextState === "loading";
     pasteFromClipboardBtn.textContent = nextState === "ready" ? "Paste from clipboard" : "Click to paste";
-    urlInput.readOnly = nextState === "idle" && !commandPanelEl?.classList.contains("manual");
+    urlInput.readOnly = !isTouchInput && nextState === "idle" && !commandPanelEl?.classList.contains("manual");
 
     if (title) {
       loadingTitleEl.textContent = title;
@@ -818,7 +830,7 @@ function setUiState(nextState, title = "", detail = "") {
 
 function setManualPasteMode(enabled) {
   commandPanelEl?.classList.toggle("manual", enabled);
-  urlInput.readOnly = uiState === "idle" && !enabled;
+  urlInput.readOnly = !isTouchInput && uiState === "idle" && !enabled;
 }
 
 function setQuality(value) {
