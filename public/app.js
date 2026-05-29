@@ -419,8 +419,8 @@ async function buildVideoFilmstrip(url) {
   await waitForVideoEvent(video, "loadedmetadata", 5000);
   const duration = Math.min(video.duration || sourceDuration, sourceDuration);
   const canvas = document.createElement("canvas");
-  canvas.width = 160;
-  canvas.height = 90;
+  canvas.width = 640;
+  canvas.height = 360;
   const context = canvas.getContext("2d");
   const frames = [];
 
@@ -428,7 +428,7 @@ async function buildVideoFilmstrip(url) {
     video.currentTime = clamp(Math.min(duration - 0.05, (duration * (index + 0.5)) / 9), 0, duration);
     await waitForVideoEvent(video, "seeked", 4000);
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    frames.push(canvas.toDataURL("image/jpeg", 0.7));
+    frames.push(canvas.toDataURL("image/jpeg", 0.88));
   }
 
   if (currentFilmstripUrl !== url) return;
@@ -467,7 +467,6 @@ function renderGeneratedFilmFrames(frames) {
 function updateGeneratedThumbnail(src) {
   if (!src) return;
   thumbnailEl.src = src;
-  heroImageEl.src = src;
   const activeOptionImage = videoOptionsEl.querySelector(".video-option.active img");
   if (activeOptionImage) activeOptionImage.src = src;
 }

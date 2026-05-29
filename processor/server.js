@@ -154,7 +154,7 @@ async function createFrames(input) {
   const duration = Math.max(1, Number(input.duration || 30));
   const count = Math.min(12, Math.max(3, Number(input.count || 9)));
   const id = randomUUID();
-  const mediaFiles = await resolveMediaFiles(sourceUrl.href, "480");
+  const mediaFiles = await resolveMediaFiles(sourceUrl.href, "720");
   const frames = [];
 
   try {
@@ -441,9 +441,9 @@ async function captureFrame(videoPath, time, outputPath, mediaFiles = {}) {
     "-frames:v",
     "1",
     "-vf",
-    "scale=160:90:force_original_aspect_ratio=increase,crop=160:90",
+    "scale=640:360:force_original_aspect_ratio=increase,crop=640:360",
     "-q:v",
-    "5",
+    "2",
     "-f",
     "image2",
     "-update",
