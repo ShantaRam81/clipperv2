@@ -26,8 +26,6 @@ const tagChipsEl = document.querySelector("#tagChips");
 const qualityOptionEls = [...document.querySelectorAll(".quality-option")];
 const hashtagOptionsEl = document.querySelector(".hashtag-options");
 const addTagOptionBtn = document.querySelector("#addTagOption");
-const exportStartTimeEl = document.querySelector("#exportStartTime");
-const exportEndTimeEl = document.querySelector("#exportEndTime");
 const filmstripEl = document.querySelector("#filmstrip");
 const filmFramesEl = document.querySelector("#filmFrames");
 const timeBubbleEl = document.querySelector("#timeBubble");
@@ -89,6 +87,8 @@ function bindEvents() {
   endRange.addEventListener("input", () => syncRange("range"));
   startInput.addEventListener("change", () => syncRange("text"));
   endInput.addEventListener("change", () => syncRange("text"));
+  startInput.addEventListener("keydown", handleTimeInputKeydown);
+  endInput.addEventListener("keydown", handleTimeInputKeydown);
   filmstripEl.addEventListener("pointerdown", startTimelineDrag);
   window.addEventListener("pointermove", moveTimelineDrag);
   window.addEventListener("pointerup", stopTimelineDrag);
@@ -130,6 +130,9 @@ function bindEvents() {
   addTagOptionBtn?.addEventListener("click", addCustomTag);
   playPreviewBtn.addEventListener("click", playSelectedPreview);
   heroImageEl?.addEventListener("click", playSelectedPreview);
+  heroImageEl?.addEventListener("error", () => {
+    heroImageEl.src = inlinePlaceholder();
+  });
   refreshBtn?.addEventListener("click", () => setMessage("Библиотека отключена: фрагменты сохраняются только на устройство."));
   form.addEventListener("submit", saveClip);
 }
@@ -453,6 +456,7 @@ function renderGeneratedFilmFrames(frames) {
 function updateGeneratedThumbnail(src) {
   if (!src) return;
   thumbnailEl.src = src;
+  heroImageEl.src = src;
   const activeOptionImage = videoOptionsEl.querySelector(".video-option.active img");
   if (activeOptionImage) activeOptionImage.src = src;
 }
@@ -544,8 +548,6 @@ function syncRange(source) {
   durationInput.value = `${(end - start).toFixed(1)} сек`;
   rangeLabel.textContent = `${formatTime(start)} - ${formatTime(end)}`;
   timeBubbleEl.textContent = formatTime(end);
-  exportStartTimeEl.textContent = formatTimeExport(start);
-  exportEndTimeEl.textContent = formatTimeExport(end);
 
   const left = (start / sourceDuration) * 100;
   const right = (end / sourceDuration) * 100;
@@ -559,6 +561,13 @@ function syncRange(source) {
   rangeStartLabelEl.textContent = formatTimeShort(start);
   rangeEndLabelEl.textContent = formatTimeShort(end);
   if (!previewVideoEl.paused) stopPreviewAtEnd();
+}
+
+function handleTimeInputKeydown(event) {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  syncRange("text");
+  event.currentTarget.blur();
 }
 
 function startTimelineDrag(event) {
@@ -774,12 +783,6 @@ function formatTimeShort(seconds) {
   const minutes = Math.floor(seconds / 60);
   const rest = Math.floor(seconds - minutes * 60);
   return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
-}
-
-function formatTimeExport(seconds) {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds - minutes * 60;
-  return `${String(minutes).padStart(2, "0")}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
 function clamp(value, min, max) {

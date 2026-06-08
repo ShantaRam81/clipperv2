@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css?v=20260609-1">
+    <link rel="stylesheet" href="/styles.css?v=20260609-2">
   </head>
   <body>
     <main class="app-shell">
@@ -111,20 +111,6 @@
               <input id="endRange" type="range" min="0" max="30" value="5" step="0.1">
             </div>
 
-            <div class="time-inputs">
-              <label class="field">
-                <span>Start</span>
-                <input id="start" type="text" value="00:00.0">
-              </label>
-              <label class="field">
-                <span>End</span>
-                <input id="end" type="text" value="00:05.0">
-              </label>
-              <label class="field">
-                <span>Length</span>
-                <input id="duration" type="text" value="5.0 сек" readonly>
-              </label>
-            </div>
           </section>
 
           <div class="export-panel panel">
@@ -133,10 +119,17 @@
             <div class="export-section duration-section">
               <span class="export-label">Duration</span>
               <div class="duration-pills">
-                <div class="duration-pill"><span aria-hidden="true">⏱</span><output id="exportStartTime">00:00.00</output></div>
+                <label class="duration-pill">
+                  <span class="clock-icon" aria-hidden="true"></span>
+                  <input id="start" type="text" value="00:00.0" inputmode="decimal" aria-label="Start time">
+                </label>
                 <i aria-hidden="true"></i>
-                <div class="duration-pill"><span aria-hidden="true">⏱</span><output id="exportEndTime">00:05.00</output></div>
+                <label class="duration-pill">
+                  <span class="clock-icon" aria-hidden="true"></span>
+                  <input id="end" type="text" value="00:05.0" inputmode="decimal" aria-label="End time">
+                </label>
               </div>
+              <output id="duration" class="duration-total">5.0 сек</output>
             </div>
 
             <div class="export-section quality-section">
@@ -205,6 +198,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
-    <script src="/app.js?v=20260609-1" type="module"></script>
+    <script src="/app.js?v=20260609-2" type="module"></script>
   </body>
 </html>
