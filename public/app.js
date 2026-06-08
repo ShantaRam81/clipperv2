@@ -159,17 +159,8 @@ function scheduleProbe() {
 async function pasteFromClipboard(event) {
   event?.preventDefault();
   event?.stopPropagation();
-  if (prefersNativePaste) {
-    setUiState("idle");
-    setManualPasteMode(false);
-    setMessage("Нажмите и удерживайте кнопку, затем выберите «Вставить».");
-    urlInput.focus();
-    return;
-  }
   if (!navigator.clipboard?.readText) {
-    setMessage("Вставьте ссылку в поле вручную.");
-    setManualPasteMode(true);
-    urlInput.focus();
+    setMessage("Браузер не дал доступ к буферу. Скопируйте ссылку и попробуйте еще раз.");
     return;
   }
 
@@ -188,16 +179,13 @@ async function pasteFromClipboard(event) {
     await probeSource();
   } catch (error) {
     setUiState("idle");
-    setMessage("Вставьте ссылку в поле вручную.");
-    setManualPasteMode(true);
-    urlInput.focus();
+    setMessage("Не удалось прочитать буфер. Проверьте разрешение вставки и нажмите еще раз.");
   }
 }
 
 function handlePasteRowClick(event) {
   if (uiState === "loading") return;
   if (event.target === urlInput && (prefersNativePaste || commandPanelEl?.classList.contains("manual"))) return;
-  if (prefersNativePaste && event.target !== pasteFromClipboardBtn) return;
   pasteFromClipboard(event);
 }
 
