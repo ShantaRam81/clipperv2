@@ -19,6 +19,7 @@ const sourceMetaEl = document.querySelector("#sourceMeta");
 const refreshBtn = document.querySelector("#refreshBtn");
 const videoOptionsEl = document.querySelector("#videoOptions");
 const qualityInput = document.querySelector("#quality");
+const soundEnabledInput = document.querySelector("#soundEnabled");
 const tagInput = document.querySelector("#tagInput");
 const tagSuggestionsEl = document.querySelector("#tagSuggestions");
 const tagChipsEl = document.querySelector("#tagChips");
@@ -267,7 +268,8 @@ async function saveClip(event) {
         title: fileName.replace(/\.mp4$/i, ""),
         start: startInput.value,
         end: endInput.value,
-        quality: qualityInput.value
+        quality: qualityInput.value,
+        includeAudio: soundEnabledInput?.checked !== false
       })
     });
     await saveFileToDevice(clip.downloadUrl || clip.href, fileName, fileHandle);

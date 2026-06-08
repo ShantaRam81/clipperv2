@@ -417,6 +417,7 @@ async function createClip(input) {
   const end = parseTime(input.end);
   const duration = Math.max(0, end - start);
   const quality = normalizeQuality(input.quality);
+  const includeAudio = input.includeAudio !== false;
   const requestedOutputDir = normalizeOutputDir(input.outputDir);
 
   if (duration <= 0) {
@@ -434,7 +435,8 @@ async function createClip(input) {
       start,
       end,
       duration,
-      quality
+      quality,
+      includeAudio
     });
   }
 
@@ -451,7 +453,7 @@ async function createClip(input) {
 
   try {
     const mediaFiles = await resolveMediaFiles(sourceUrl.href, quality);
-    await cutMedia(mediaFiles, start, duration, outputPath, quality);
+    await cutMedia(mediaFiles, start, duration, outputPath, quality, includeAudio);
     await assertVideoFile(outputPath);
   } catch (error) {
     try {
@@ -473,6 +475,7 @@ async function createClip(input) {
     end,
     duration,
     quality,
+    includeAudio,
     createdAt: new Date().toISOString(),
     file: normalize(outputPath),
     outputName,
@@ -1060,21 +1063,23 @@ async function resolveMediaFiles(sourceUrl, quality) {
   return { videoPath: video.url, audioPath: audio?.url || "", streamed: false };
 }
 
-async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720") {
+async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720", includeAudio = true) {
   const args = ["-y"];
 
   if (!mediaFiles.streamed) {
     args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
   }
   args.push("-i", mediaFiles.videoPath);
-  if (mediaFiles.audioPath && mediaFiles.audioPath !== mediaFiles.videoPath) {
+  if (includeAudio && mediaFiles.audioPath && mediaFiles.audioPath !== mediaFiles.videoPath) {
     if (!mediaFiles.streamed) {
       args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
     }
     args.push("-i", mediaFiles.audioPath);
     args.push("-map", "0:v:0", "-map", "1:a:0");
-  } else {
+  } else if (includeAudio) {
     args.push("-map", "0:v:0", "-map", "0:a:0?");
+  } else {
+    args.push("-map", "0:v:0", "-an");
   }
 
   if (mediaFiles.streamed) {
@@ -1091,9 +1096,7 @@ async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720"
     "libx264",
     "-pix_fmt",
     "yuv420p",
-    "-c:a",
-    "aac",
-    "-shortest",
+    ...(includeAudio ? ["-c:a", "aac", "-shortest"] : []),
     "-movflags",
     "+faststart",
     outputPath

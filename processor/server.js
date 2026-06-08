@@ -122,6 +122,7 @@ async function createClip(input) {
   const end = parseTime(input.end);
   const duration = Math.max(0, end - start);
   const quality = normalizeQuality(input.quality);
+  const includeAudio = input.includeAudio !== false;
 
   if (duration <= 0) throw statusError("Конец фрагмента должен быть позже начала.", 400);
   if (duration > 60) throw statusError("Фрагмент должен быть до 60 секунд.", 400);
@@ -132,7 +133,7 @@ async function createClip(input) {
 
   try {
     const mediaFiles = await resolveMediaFiles(sourceUrl.href, quality);
-    await cutMedia(mediaFiles, start, duration, outputPath, quality);
+    await cutMedia(mediaFiles, start, duration, outputPath, quality, includeAudio);
     await assertVideoFile(outputPath);
   } catch (error) {
     await unlink(outputPath).catch(() => {});
@@ -143,6 +144,7 @@ async function createClip(input) {
     id,
     title,
     outputName,
+    includeAudio,
     href: `${publicBaseUrl}/clips/${encodeURIComponent(outputName)}`,
     publicUrl: `${publicBaseUrl}/clips/${encodeURIComponent(outputName)}`,
     createdAt: new Date().toISOString()
@@ -400,7 +402,7 @@ async function getYtdlpInfo(url, format = "") {
   return JSON.parse(result.stdout);
 }
 
-async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720") {
+async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720", includeAudio = true) {
   const args = ["-y"];
 
   if (!mediaFiles.streamed) {
@@ -408,14 +410,16 @@ async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720"
   }
   args.push("-i", mediaFiles.videoPath);
 
-  if (mediaFiles.audioPath && mediaFiles.audioPath !== mediaFiles.videoPath) {
+  if (includeAudio && mediaFiles.audioPath && mediaFiles.audioPath !== mediaFiles.videoPath) {
     if (!mediaFiles.streamed) {
       args.push("-ss", formatSeconds(start), "-t", formatSeconds(duration));
     }
     args.push("-i", mediaFiles.audioPath);
     args.push("-map", "0:v:0", "-map", "1:a:0");
-  } else {
+  } else if (includeAudio) {
     args.push("-map", "0:v:0", "-map", "0:a:0?");
+  } else {
+    args.push("-map", "0:v:0", "-an");
   }
 
   if (mediaFiles.streamed) {
@@ -424,7 +428,16 @@ async function cutMedia(mediaFiles, start, duration, outputPath, quality = "720"
 
   const maxHeight = getMaxHeight(quality);
   if (maxHeight) args.push("-vf", `scale=-2:min(${maxHeight}\\,ih)`);
-  args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-movflags", "+faststart", outputPath);
+  args.push(
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    ...(includeAudio ? ["-c:a", "aac", "-shortest"] : []),
+    "-movflags",
+    "+faststart",
+    outputPath
+  );
   await runCommand("ffmpeg", args, { timeout: 120000 });
 }
 
