@@ -72,7 +72,6 @@ init();
 
 async function init() {
   setUiState("idle");
-  if (prefersNativePaste) setManualPasteMode(true);
   loadPreferences();
   bindEvents();
   loadSavedTags();
@@ -161,8 +160,8 @@ async function pasteFromClipboard(event) {
   event?.stopPropagation();
   if (prefersNativePaste) {
     setUiState("idle");
-    setManualPasteMode(true);
-    setMessage("Нажмите и удерживайте поле, затем выберите «Вставить».");
+    setManualPasteMode(false);
+    setMessage("Нажмите и удерживайте кнопку, затем выберите «Вставить».");
     urlInput.focus();
     return;
   }
@@ -819,7 +818,7 @@ function setUiState(nextState, title = "", detail = "") {
     appShellEl.dataset.uiState = nextState;
     loadingStateEl.hidden = nextState !== "loading";
     pasteFromClipboardBtn.disabled = nextState === "loading";
-    pasteFromClipboardBtn.textContent = nextState === "ready" ? "Paste from clipboard" : "Click to paste";
+    pasteFromClipboardBtn.textContent = "Paste from clipboard";
     urlInput.readOnly = !prefersNativePaste && nextState === "idle" && !commandPanelEl?.classList.contains("manual");
 
     if (title) {
