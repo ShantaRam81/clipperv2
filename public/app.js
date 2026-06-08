@@ -169,9 +169,8 @@ async function pasteFromClipboard(event) {
     const value = (await readClipboardText()).trim();
     if (!value) {
       setUiState("idle");
-      setMessage("Буфер обмена пуст.");
+      setMessage("Буфер обмена пуст. Скопируйте ссылку и нажмите Paste from clipboard еще раз.");
       setManualPasteMode(false);
-      urlInput.focus();
       return;
     }
     setManualPasteMode(false);
@@ -217,11 +216,8 @@ async function loadHealth() {
   if (missing.length) {
     statusEl.textContent = `Нет ${missing.join(", ")}`;
     statusEl.className = "status warning";
-  } else if (health.processing?.mode === "remote") {
-    statusEl.textContent = "Облачная обработка";
-    statusEl.className = "status ready";
   } else {
-    statusEl.textContent = "Локальный режим";
+    statusEl.textContent = "";
     statusEl.className = "status ready";
   }
 }

@@ -2185,6 +2185,8 @@ input[type="range"]::-moz-range-thumb {
   background: transparent !important;
   color: transparent !important;
   caret-color: transparent !important;
+  pointer-events: none !important;
+  user-select: none !important;
 }
 
 .app-shell[data-native-paste="true"][data-ui-state="idle"] .command-panel.manual .paste-cta,
