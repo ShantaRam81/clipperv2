@@ -71,6 +71,7 @@ const prefersNativePaste = isTouchInput
 init();
 
 async function init() {
+  appShellEl.dataset.nativePaste = prefersNativePaste ? "true" : "false";
   setUiState("idle");
   loadPreferences();
   bindEvents();
