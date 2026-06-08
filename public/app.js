@@ -164,7 +164,7 @@ async function pasteFromClipboard(event) {
   event?.preventDefault();
   event?.stopPropagation();
   if (!navigator.clipboard?.readText) {
-    setMessage("Браузер не дал доступ к буферу. Скопируйте ссылку и попробуйте еще раз.");
+    enableManualPasteFallback("Браузер не дал доступ к буферу. Вставьте ссылку в поле вручную.");
     return;
   }
 
@@ -182,7 +182,7 @@ async function pasteFromClipboard(event) {
     await probeSource();
   } catch (error) {
     setUiState("idle");
-    setMessage("Не удалось прочитать буфер. Проверьте разрешение вставки и нажмите еще раз.");
+    enableManualPasteFallback("iOS не дал доступ к буферу. Вставьте ссылку в поле вручную.");
   }
 }
 
@@ -194,9 +194,18 @@ function handlePasteRowClick(event) {
 
 function readClipboardText() {
   const timeout = new Promise((_, reject) => {
-    window.setTimeout(() => reject(new Error("Clipboard timeout")), 1500);
+    window.setTimeout(() => reject(new Error("Clipboard timeout")), 8000);
   });
   return Promise.race([navigator.clipboard.readText(), timeout]);
+}
+
+function enableManualPasteFallback(message) {
+  setManualPasteMode(true);
+  setMessage(message);
+  urlInput.readOnly = false;
+  window.setTimeout(() => {
+    urlInput.focus({ preventScroll: true });
+  }, 0);
 }
 
 async function chooseOutputFolder() {

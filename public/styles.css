@@ -2247,10 +2247,28 @@ input[type="range"]::-moz-range-thumb {
 
 .app-shell[data-native-paste="true"][data-ui-state="idle"] .command-panel.manual .paste-row {
   grid-template-columns: 1fr !important;
-  padding: 0 !important;
+  padding: 8px !important;
 }
 
-.app-shell[data-native-paste="true"][data-ui-state="idle"] .command-panel.manual #url,
+.app-shell[data-native-paste="true"][data-ui-state="idle"] .command-panel.manual #url {
+  position: relative !important;
+  inset: auto !important;
+  z-index: 2 !important;
+  height: 56px !important;
+  opacity: 1 !important;
+  padding: 0 16px !important;
+  border-radius: 13px !important;
+  background: #393936 !important;
+  color: rgba(236, 238, 241, 0.9) !important;
+  caret-color: #fbff58 !important;
+  pointer-events: auto !important;
+  user-select: text !important;
+}
+
+.app-shell[data-native-paste="true"][data-ui-state="idle"] .command-panel.manual #url::placeholder {
+  color: rgba(236, 238, 241, 0.34) !important;
+}
+
 .app-shell[data-native-paste="true"][data-ui-state="idle"] #url {
   position: absolute !important;
   inset: 0 !important;
@@ -2264,7 +2282,6 @@ input[type="range"]::-moz-range-thumb {
   user-select: none !important;
 }
 
-.app-shell[data-native-paste="true"][data-ui-state="idle"] .command-panel.manual .paste-cta,
 .app-shell[data-native-paste="true"][data-ui-state="idle"] .paste-cta {
   position: absolute !important;
   inset: 0 !important;
@@ -2278,4 +2295,8 @@ input[type="range"]::-moz-range-thumb {
   background: transparent !important;
   color: rgba(236, 238, 241, 0.38) !important;
   pointer-events: auto !important;
+}
+
+.app-shell[data-native-paste="true"][data-ui-state="idle"] .command-panel.manual .paste-cta {
+  display: none !important;
 }
