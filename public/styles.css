@@ -1021,14 +1021,6 @@ input[type="range"]::-moz-range-thumb {
   color: rgba(236, 238, 241, 0.34);
 }
 
-.app-shell[data-native-paste="true"][data-ui-state="idle"] .paste-cta {
-  display: none;
-}
-
-.app-shell[data-native-paste="true"][data-ui-state="idle"] #url::placeholder {
-  color: rgba(236, 238, 241, 0.38);
-}
-
 .app-shell[data-ui-state="idle"] .paste-cta:hover {
   background: rgba(255, 255, 255, 0.025);
   color: rgba(236, 238, 241, 0.48);
@@ -2244,12 +2236,4 @@ input[type="range"]::-moz-range-thumb {
   width: 100% !important;
   pointer-events: auto !important;
   user-select: text !important;
-}
-
-.app-shell[data-native-paste="true"][data-ui-state="idle"] .paste-cta {
-  display: none !important;
-}
-
-.app-shell[data-native-paste="true"][data-ui-state="idle"] #url::placeholder {
-  color: rgba(236, 238, 241, 0.38) !important;
 }

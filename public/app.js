@@ -156,11 +156,6 @@ function scheduleProbe() {
 async function pasteFromClipboard(event) {
   event?.preventDefault();
   event?.stopPropagation();
-  if (prefersNativePaste && uiState === "idle") {
-    focusNativePasteField();
-    return;
-  }
-
   if (!navigator.clipboard?.readText) {
     enableManualPasteFallback("Вставьте ссылку вручную.");
     return;
@@ -188,10 +183,6 @@ async function pasteFromClipboard(event) {
 function handlePasteRowClick(event) {
   if (uiState === "loading") return;
   if (event.target === urlInput) return;
-  if (prefersNativePaste && uiState === "idle") {
-    focusNativePasteField();
-    return;
-  }
   pasteFromClipboard(event);
 }
 
@@ -207,14 +198,6 @@ function enableManualPasteFallback(message) {
   setMessage(message);
   urlInput.readOnly = false;
   urlInput.placeholder = "Paste URL here";
-  urlInput.focus({ preventScroll: true });
-}
-
-function focusNativePasteField() {
-  appShellEl.dataset.manualPaste = "true";
-  setMessage("");
-  urlInput.readOnly = false;
-  urlInput.placeholder = "Paste from clipboard";
   urlInput.focus({ preventScroll: true });
 }
 
