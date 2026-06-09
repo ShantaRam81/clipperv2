@@ -1022,15 +1022,35 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .app-shell[data-native-paste="true"][data-ui-state="idle"] #url {
-  z-index: 3;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  height: 100%;
+  opacity: 0.01;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  pointer-events: none;
+  user-select: none;
 }
 
 .app-shell[data-native-paste="true"][data-ui-state="idle"] #url::placeholder {
-  color: rgba(236, 238, 241, 0.38);
+  color: transparent;
 }
 
 .app-shell[data-native-paste="true"][data-ui-state="idle"] .paste-cta {
-  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: rgba(236, 238, 241, 0.38);
+  pointer-events: auto;
 }
 
 .app-shell[data-ui-state="idle"] .paste-cta:hover {
@@ -2246,18 +2266,41 @@ input[type="range"]::-moz-range-thumb {
 .app-shell[data-ui-state="idle"] #url {
   min-width: 0 !important;
   width: 100% !important;
-  pointer-events: auto !important;
-  user-select: text !important;
+}
+
+.app-shell[data-native-paste="true"][data-ui-state="idle"] .command-panel.manual .paste-row {
+  grid-template-columns: 1fr !important;
+  padding: 0 !important;
 }
 
 .app-shell[data-native-paste="true"][data-ui-state="idle"] #url {
-  z-index: 3 !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 1 !important;
+  height: 100% !important;
+  opacity: 0.01 !important;
+  background: transparent !important;
+  color: transparent !important;
+  caret-color: transparent !important;
+  pointer-events: none !important;
+  user-select: none !important;
 }
 
 .app-shell[data-native-paste="true"][data-ui-state="idle"] #url::placeholder {
-  color: rgba(236, 238, 241, 0.38) !important;
+  color: transparent !important;
 }
 
 .app-shell[data-native-paste="true"][data-ui-state="idle"] .paste-cta {
-  display: none !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 3 !important;
+  display: grid !important;
+  place-items: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+  border-radius: 13px !important;
+  background: transparent !important;
+  color: rgba(236, 238, 241, 0.38) !important;
+  pointer-events: auto !important;
 }

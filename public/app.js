@@ -111,6 +111,14 @@ function bindEvents() {
   });
   pasteFromClipboardBtn?.addEventListener("click", pasteFromClipboard);
   pasteRowEl?.addEventListener("click", handlePasteRowClick);
+  if (!prefersNativePaste) {
+    pasteRowEl?.addEventListener("contextmenu", (event) => event.preventDefault());
+  }
+  urlInput.addEventListener("focus", () => {
+    if (!prefersNativePaste && uiState === "idle" && !commandPanelEl?.classList.contains("manual")) {
+      urlInput.blur();
+    }
+  });
   includeEmbeddedInput?.addEventListener("change", () => {
     localStorage.setItem("referenceClipperIncludeEmbedded", includeEmbeddedInput.checked ? "1" : "0");
     if (urlInput.value.trim()) scheduleProbe();
@@ -156,13 +164,9 @@ function scheduleProbe() {
 async function pasteFromClipboard(event) {
   event?.preventDefault();
   event?.stopPropagation();
-  if (prefersNativePaste && uiState === "idle") {
-    focusNativePasteInput();
-    return;
-  }
 
   if (!navigator.clipboard?.readText) {
-    enableManualPasteFallback("Вставьте ссылку вручную.");
+    setMessage("Браузер не дал доступ к буферу. Скопируйте ссылку и попробуйте еще раз.");
     return;
   }
 
@@ -171,7 +175,7 @@ async function pasteFromClipboard(event) {
     const value = (await readClipboardText()).trim();
     if (!value) {
       setUiState("idle");
-      enableManualPasteFallback("Вставьте ссылку в поле.");
+      setMessage("Буфер обмена пуст. Скопируйте ссылку и нажмите Paste from clipboard еще раз.");
       setManualPasteMode(false);
       return;
     }
@@ -181,41 +185,21 @@ async function pasteFromClipboard(event) {
     await probeSource();
   } catch (error) {
     setUiState("idle");
-    enableManualPasteFallback("Вставьте ссылку вручную.");
+    setMessage("Не удалось прочитать буфер. Проверьте разрешение вставки и нажмите еще раз.");
   }
 }
 
 function handlePasteRowClick(event) {
   if (uiState === "loading") return;
-  if (event.target === urlInput) return;
-  if (prefersNativePaste && uiState === "idle") {
-    focusNativePasteInput();
-    return;
-  }
+  if (event.target === urlInput && (prefersNativePaste || commandPanelEl?.classList.contains("manual"))) return;
   pasteFromClipboard(event);
 }
 
 function readClipboardText() {
   const timeout = new Promise((_, reject) => {
-    window.setTimeout(() => reject(new Error("Clipboard timeout")), 8000);
+    window.setTimeout(() => reject(new Error("Clipboard timeout")), 1500);
   });
   return Promise.race([navigator.clipboard.readText(), timeout]);
-}
-
-function enableManualPasteFallback(message) {
-  appShellEl.dataset.manualPaste = "true";
-  setMessage(message);
-  urlInput.readOnly = false;
-  urlInput.placeholder = "Paste URL here";
-  urlInput.focus({ preventScroll: true });
-}
-
-function focusNativePasteInput() {
-  appShellEl.dataset.manualPaste = "true";
-  setMessage("");
-  urlInput.readOnly = false;
-  urlInput.placeholder = "Paste from clipboard";
-  urlInput.focus({ preventScroll: true });
 }
 
 async function chooseOutputFolder() {
@@ -829,7 +813,7 @@ function setUiState(nextState, title = "", detail = "") {
     loadingStateEl.hidden = nextState !== "loading";
     pasteFromClipboardBtn.disabled = nextState === "loading";
     pasteFromClipboardBtn.textContent = "Paste from clipboard";
-    urlInput.readOnly = false;
+    urlInput.readOnly = !prefersNativePaste && nextState === "idle" && !commandPanelEl?.classList.contains("manual");
 
     if (title) {
       loadingTitleEl.textContent = title;
@@ -848,7 +832,7 @@ function setUiState(nextState, title = "", detail = "") {
 
 function setManualPasteMode(enabled) {
   commandPanelEl?.classList.toggle("manual", enabled);
-  urlInput.readOnly = false;
+  urlInput.readOnly = !prefersNativePaste && uiState === "idle" && !enabled;
 }
 
 function setQuality(value) {
