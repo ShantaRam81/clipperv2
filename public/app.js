@@ -255,8 +255,13 @@ async function probeSource() {
     });
     if (token !== probeToken) return;
 
-    renderVideoOptions(data.options?.length ? data.options : [data]);
-    await applySource(data);
+    const options = filterMediaOptions(data.options?.length ? data.options : [data]);
+    if (!options.length) {
+      throw new Error("GIF files выключен. Включите его перед вставкой, если нужны GIF.");
+    }
+    showingAllOptions = false;
+    renderVideoOptions(options);
+    await applySource(options[0]);
     setMessage(data.message || "Источник распознан.");
     setUiState("ready");
   } catch (error) {
@@ -301,12 +306,12 @@ async function saveClip(event) {
 }
 
 function renderVideoOptions(options) {
-  currentOptions = options;
+  currentOptions = filterMediaOptions(options);
   videoOptionsEl.innerHTML = "";
-  videoOptionsEl.hidden = !options.length;
-  if (!options.length) return;
+  videoOptionsEl.hidden = !currentOptions.length;
+  if (!currentOptions.length) return;
 
-  const visibleOptions = showingAllOptions ? options : options.slice(0, 5);
+  const visibleOptions = showingAllOptions ? currentOptions : currentOptions.slice(0, 5);
   for (const [index, option] of visibleOptions.entries()) {
     const item = document.createElement("button");
     item.type = "button";
@@ -345,17 +350,17 @@ function renderVideoOptions(options) {
     videoOptionsEl.append(item);
   }
 
-  if (options.length > visibleOptions.length) {
+  if (currentOptions.length > visibleOptions.length) {
     const more = document.createElement("button");
     more.type = "button";
     more.className = "video-option more-option";
-    more.textContent = `Показать все видео (${options.length})`;
+    more.textContent = `Показать все медиа (${currentOptions.length})`;
     more.addEventListener("click", () => {
       showingAllOptions = true;
       renderVideoOptions(currentOptions);
     });
     videoOptionsEl.append(more);
-  } else if (options.length > 5) {
+  } else if (currentOptions.length > 5) {
     const less = document.createElement("button");
     less.type = "button";
     less.className = "video-option more-option";
@@ -366,6 +371,11 @@ function renderVideoOptions(options) {
     });
     videoOptionsEl.append(less);
   }
+}
+
+function filterMediaOptions(options) {
+  const includeGifs = includeGifsInput?.checked === true;
+  return options.filter((option) => includeGifs || !(option.mediaType === "gif" || isGifUrl(option.url)));
 }
 
 async function applySource(data) {

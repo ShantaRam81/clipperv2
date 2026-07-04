@@ -801,7 +801,7 @@ async function discoverBehanceVideos(pageUrl, options = {}) {
     }
   }
   if (includeEmbedded) {
-    addBehanceEmbeddedCandidates(html, candidates);
+    addBehanceEmbeddedCandidates(html, candidates, { includeGifs });
   }
 
   return [...candidates.values()];
@@ -900,7 +900,8 @@ function matchFirst(value, pattern) {
   return match ? match[1].replace(/&amp;/g, "&") : "";
 }
 
-function addBehanceEmbeddedCandidates(html, candidates) {
+function addBehanceEmbeddedCandidates(html, candidates, options = {}) {
+  const includeGifs = options.includeGifs === true;
   for (const match of html.matchAll(/https?:\/\/player\.vimeo\.com\/video\/\d+[^"'<>\\\s]*/gi)) {
     addVideoCandidate(candidates, match[0], "Vimeo");
   }
@@ -916,8 +917,10 @@ function addBehanceEmbeddedCandidates(html, candidates) {
   for (const match of html.matchAll(/"embedUrl"\s*:\s*"([^"]*player\.vimeo\.com\/video\/[^"]+)"/gi)) {
     addVideoCandidate(candidates, match[1], "Vimeo");
   }
-  for (const match of html.matchAll(/"[^"]+"\s*:\s*"([^"]+\.gif(?:\?[^"]*)?)"/gi)) {
-    addGifCandidate(candidates, match[1]);
+  if (includeGifs) {
+    for (const match of html.matchAll(/"[^"]+"\s*:\s*"([^"]+\.gif(?:\?[^"]*)?)"/gi)) {
+      addGifCandidate(candidates, match[1]);
+    }
   }
 }
 

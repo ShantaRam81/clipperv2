@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css?v=20260705-1">
+    <link rel="stylesheet" href="/styles.css?v=20260705-2">
   </head>
   <body>
     <main class="app-shell">
@@ -39,20 +39,22 @@
             <input id="url" type="url" placeholder="Paste from clipboard" autocomplete="off" required>
             <button type="button" id="pasteFromClipboardBtn" class="paste-cta">Paste from clipboard</button>
           </div>
-          <label class="toggle-field embedded-toggle" for="includeEmbedded">
-            <input id="includeEmbedded" type="checkbox" checked>
-            <i aria-hidden="true"></i>
-            <span>
-              <strong>Embedded video</strong>
-            </span>
-          </label>
-          <label class="toggle-field gif-toggle" for="includeGifs">
-            <input id="includeGifs" type="checkbox">
-            <i aria-hidden="true"></i>
-            <span>
-              <strong>GIF files</strong>
-            </span>
-          </label>
+          <div class="source-toggles" aria-label="Настройки поиска">
+            <label class="toggle-field embedded-toggle" for="includeEmbedded">
+              <input id="includeEmbedded" type="checkbox" checked>
+              <i aria-hidden="true"></i>
+              <span>
+                <strong>Embedded video</strong>
+              </span>
+            </label>
+            <label class="toggle-field gif-toggle" for="includeGifs">
+              <input id="includeGifs" type="checkbox">
+              <i aria-hidden="true"></i>
+              <span>
+                <strong>GIF files</strong>
+              </span>
+            </label>
+          </div>
           <div id="commandMessage" class="command-message" aria-live="polite"></div>
         </section>
 
@@ -205,6 +207,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
-    <script src="/app.js?v=20260705-1" type="module"></script>
+    <script src="/app.js?v=20260705-2" type="module"></script>
   </body>
 </html>
