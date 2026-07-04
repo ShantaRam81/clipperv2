@@ -53,7 +53,8 @@ createServer(async (req, res) => {
       const body = await readJson(req);
       if (body.action === "probe") {
         return sendJson(res, await probeSource(body.url, {
-          includeEmbedded: body.includeEmbedded !== false
+          includeEmbedded: body.includeEmbedded !== false,
+          includeGifs: body.includeGifs === true
         }));
       }
       if (body.action === "frames") {
@@ -87,13 +88,17 @@ async function probeSource(sourceUrl, options = {}) {
   const parsedUrl = validateUrl(sourceUrl);
   const provider = detectProvider(parsedUrl.href);
   const includeEmbedded = options.includeEmbedded !== false;
+  const includeGifs = options.includeGifs === true;
 
   if (isGif(parsedUrl.href)) {
+    if (!includeGifs) {
+      throw statusError("Это GIF-файл. Включите GIF files перед вставкой ссылки.", 400);
+    }
     return createGifProbeResult(parsedUrl.href, 0);
   }
 
   if (provider === "Behance") {
-    const candidates = await discoverBehanceVideos(parsedUrl.href, { includeEmbedded });
+    const candidates = await discoverBehanceVideos(parsedUrl.href, { includeEmbedded, includeGifs });
     if (!candidates.length) {
       throw statusError("В этом Behance-кейсе не найдено поддерживаемое видео или GIF.", 404);
     }
@@ -120,7 +125,7 @@ async function probeSource(sourceUrl, options = {}) {
       canDownload: true
     };
   } catch (error) {
-    const gifCandidates = await discoverPageGifs(parsedUrl.href).catch(() => []);
+    const gifCandidates = includeGifs ? await discoverPageGifs(parsedUrl.href).catch(() => []) : [];
     if (gifCandidates.length) {
       const enriched = gifCandidates.map((candidate, index) => createGifProbeResult(candidate.url, index));
       return {
@@ -203,6 +208,7 @@ async function createFrames(input) {
 
 async function discoverBehanceVideos(pageUrl, options = {}) {
   const includeEmbedded = options.includeEmbedded !== false;
+  const includeGifs = options.includeGifs === true;
   const response = await fetch(pageUrl, {
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ReferenceClipper/1.0",
@@ -225,8 +231,10 @@ async function discoverBehanceVideos(pageUrl, options = {}) {
   for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.(?:mp4|webm|mov)(?:\?[^"'<> ]*)?/gi)) {
     addVideoCandidate(candidates, match[0], "Direct video");
   }
-  for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.gif(?:\?[^"'<> ]*)?/gi)) {
-    addGifCandidate(candidates, match[0]);
+  if (includeGifs) {
+    for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.gif(?:\?[^"'<> ]*)?/gi)) {
+      addGifCandidate(candidates, match[0]);
+    }
   }
   if (includeEmbedded) {
     addBehanceEmbeddedCandidates(html, candidates);

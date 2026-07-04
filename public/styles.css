@@ -1248,10 +1248,12 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .app-shell[data-ui-state="ready"] .source-panel {
+  max-height: min(76vh, 760px);
   min-height: 0;
   padding: 24px;
   gap: 22px;
   align-content: start;
+  overflow: hidden;
 }
 
 .app-shell[data-ui-state="ready"] .source-panel h2 {
@@ -1261,12 +1263,14 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1;
 }
 
-.embedded-toggle {
+.embedded-toggle,
+.gif-toggle {
   width: fit-content;
   justify-self: center;
 }
 
-.app-shell[data-ui-state="idle"] .embedded-toggle {
+.app-shell[data-ui-state="idle"] .embedded-toggle,
+.app-shell[data-ui-state="idle"] .gif-toggle {
   grid-template-columns: 42px minmax(0, auto);
   min-height: 28px;
   padding: 0;
@@ -1274,12 +1278,14 @@ input[type="range"]::-moz-range-thumb {
   background: transparent;
 }
 
-.app-shell[data-ui-state="idle"] .embedded-toggle span {
+.app-shell[data-ui-state="idle"] .embedded-toggle span,
+.app-shell[data-ui-state="idle"] .gif-toggle span {
   grid-column: 2;
   grid-row: 1;
 }
 
-.app-shell[data-ui-state="idle"] .embedded-toggle i {
+.app-shell[data-ui-state="idle"] .embedded-toggle i,
+.app-shell[data-ui-state="idle"] .gif-toggle i {
   grid-column: 1;
   grid-row: 1;
   width: 38px;
@@ -1287,29 +1293,34 @@ input[type="range"]::-moz-range-thumb {
   background: var(--solid-control);
 }
 
-.app-shell[data-ui-state="idle"] .embedded-toggle i::after {
+.app-shell[data-ui-state="idle"] .embedded-toggle i::after,
+.app-shell[data-ui-state="idle"] .gif-toggle i::after {
   top: 2px;
   left: 2px;
   width: 14px;
   height: 14px;
 }
 
-.app-shell[data-ui-state="idle"] .embedded-toggle input:checked + i {
+.app-shell[data-ui-state="idle"] .embedded-toggle input:checked + i,
+.app-shell[data-ui-state="idle"] .gif-toggle input:checked + i {
   background: #fbff58;
 }
 
-.app-shell[data-ui-state="idle"] .embedded-toggle input:checked + i::after {
+.app-shell[data-ui-state="idle"] .embedded-toggle input:checked + i::after,
+.app-shell[data-ui-state="idle"] .gif-toggle input:checked + i::after {
   transform: translateX(20px);
   background: #171714;
 }
 
-.app-shell[data-ui-state="idle"] .embedded-toggle strong {
+.app-shell[data-ui-state="idle"] .embedded-toggle strong,
+.app-shell[data-ui-state="idle"] .gif-toggle strong {
   color: rgba(236, 238, 241, 0.68);
   font-size: 16px;
   font-weight: 500;
 }
 
-.app-shell[data-ui-state="ready"] .embedded-toggle {
+.app-shell[data-ui-state="ready"] .embedded-toggle,
+.app-shell[data-ui-state="ready"] .gif-toggle {
   display: none;
 }
 
@@ -1320,9 +1331,22 @@ input[type="range"]::-moz-range-thumb {
 .app-shell[data-ui-state="ready"] .video-options {
   align-content: start;
   gap: 16px;
-  max-height: none;
-  padding: 0;
-  overflow: visible;
+  max-height: min(64vh, 640px);
+  min-height: 0;
+  padding: 0 6px 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(251, 255, 88, 0.45) transparent;
+}
+
+.app-shell[data-ui-state="ready"] .video-options::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-shell[data-ui-state="ready"] .video-options::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(251, 255, 88, 0.42);
 }
 
 .app-shell[data-ui-state="ready"] .video-options::before {

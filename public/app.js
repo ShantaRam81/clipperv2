@@ -13,6 +13,7 @@ const messageEl = document.querySelector("#message");
 const clipsEl = document.querySelector("#clips");
 const previewEl = document.querySelector("#sourcePreview");
 const includeEmbeddedInput = document.querySelector("#includeEmbedded");
+const includeGifsInput = document.querySelector("#includeGifs");
 const thumbnailEl = document.querySelector("#thumbnail");
 const sourceTitleEl = document.querySelector("#sourceTitle");
 const sourceMetaEl = document.querySelector("#sourceMeta");
@@ -56,7 +57,7 @@ let activeDrag = null;
 let currentFilmstripUrl = "";
 let canSelectOutputFolder = true;
 let configuredTags = ["Motion", "Transition", "Animate", "Flow", "Particles", "Background", "Scenario"];
-let selectedTags = ["Transition", "Background"];
+let selectedTags = [];
 let savedTags = [];
 let showingAllOptions = false;
 let currentOptions = [];
@@ -125,6 +126,10 @@ function bindEvents() {
     localStorage.setItem("referenceClipperIncludeEmbedded", includeEmbeddedInput.checked ? "1" : "0");
     if (urlInput.value.trim()) scheduleProbe();
   });
+  includeGifsInput?.addEventListener("change", () => {
+    localStorage.setItem("referenceClipperIncludeGifs", includeGifsInput.checked ? "1" : "0");
+    if (urlInput.value.trim()) scheduleProbe();
+  });
   tagInput?.addEventListener("keydown", handleTagKeydown);
   tagInput?.addEventListener("change", () => addTag(tagInput.value));
   qualityOptionEls.forEach((button) => {
@@ -141,8 +146,12 @@ function bindEvents() {
 }
 
 function loadPreferences() {
-  if (!includeEmbeddedInput) return;
-  includeEmbeddedInput.checked = localStorage.getItem("referenceClipperIncludeEmbedded") !== "0";
+  if (includeEmbeddedInput) {
+    includeEmbeddedInput.checked = localStorage.getItem("referenceClipperIncludeEmbedded") !== "0";
+  }
+  if (includeGifsInput) {
+    includeGifsInput.checked = localStorage.getItem("referenceClipperIncludeGifs") === "1";
+  }
 }
 
 function scheduleProbe() {
@@ -240,7 +249,8 @@ async function probeSource() {
       method: "POST",
       body: JSON.stringify({
         url: urlInput.value,
-        includeEmbedded: includeEmbeddedInput?.checked !== false
+        includeEmbedded: includeEmbeddedInput?.checked !== false,
+        includeGifs: includeGifsInput?.checked === true
       })
     });
     if (token !== probeToken) return;
@@ -372,8 +382,11 @@ async function applySource(data) {
   sourceTitleEl.textContent = data.title || data.provider || "Источник";
   sourceMetaEl.textContent = selectedMediaType === "gif" ? "GIF" : `${data.provider} · ${formatTime(sourceDuration)}`;
   thumbnailEl.src = data.thumbnail || inlinePlaceholder();
-  heroImageEl.src = data.thumbnail || inlinePlaceholder();
-  renderFilmFrames(data.thumbnail || inlinePlaceholder());
+  const imagePreview = selectedMediaType === "gif"
+    ? selectedPreviewUrl || selectedSourceUrl || data.thumbnail || inlinePlaceholder()
+    : data.thumbnail || inlinePlaceholder();
+  heroImageEl.src = imagePreview;
+  renderFilmFrames(imagePreview);
   currentFilmstripUrl = selectedSourceUrl;
   if (selectedMediaType === "gif") {
     resetPreviewVideo();
@@ -653,7 +666,7 @@ async function playSelectedPreview() {
     return;
   }
   if (selectedMediaType === "gif") {
-    heroImageEl.src = selectedSourceUrl;
+    heroImageEl.src = selectedPreviewUrl || selectedSourceUrl;
     previewVideoEl.hidden = true;
     setMessage("GIF уже отображается в предпросмотре.");
     return;

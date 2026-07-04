@@ -73,7 +73,8 @@ export async function handleRequest(req, res) {
     if (req.method === "POST" && url.pathname === "/api/probe") {
       const body = await readJson(req);
       return sendJson(res, await probeSource(body.url, {
-        includeEmbedded: body.includeEmbedded !== false
+        includeEmbedded: body.includeEmbedded !== false,
+        includeGifs: body.includeGifs === true
       }));
     }
 
@@ -269,20 +270,25 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
 async function probeSource(sourceUrl, options = {}) {
   const parsedUrl = validateUrl(sourceUrl);
   const includeEmbedded = options.includeEmbedded !== false;
+  const includeGifs = options.includeGifs === true;
   if (remoteProcessorUrl) {
     return callRemoteProcessor({
       action: "probe",
       url: parsedUrl.href,
-      includeEmbedded
+      includeEmbedded,
+      includeGifs
     });
   }
 
   if (isGif(parsedUrl.href)) {
+    if (!includeGifs) {
+      throw statusError("Это GIF-файл. Включите GIF files перед вставкой ссылки.", 400);
+    }
     return createGifProbeResult(parsedUrl.href, 0);
   }
 
   if (detectProvider(parsedUrl.href) === "Behance") {
-    const candidates = await discoverBehanceVideos(parsedUrl.href, { includeEmbedded });
+    const candidates = await discoverBehanceVideos(parsedUrl.href, { includeEmbedded, includeGifs });
     if (candidates.length) {
       const enriched = await enrichVideoOptions(candidates);
       const first = enriched[0];
@@ -298,7 +304,7 @@ async function probeSource(sourceUrl, options = {}) {
 
   const ytdlp = await hasCommand("yt-dlp");
   if (!ytdlp) {
-    const gifCandidates = await discoverPageGifs(parsedUrl.href).catch(() => []);
+    const gifCandidates = includeGifs ? await discoverPageGifs(parsedUrl.href).catch(() => []) : [];
     if (gifCandidates.length) {
       const enriched = gifCandidates.map((candidate, index) => createGifProbeResult(candidate.url, index));
       return {
@@ -333,7 +339,7 @@ async function probeSource(sourceUrl, options = {}) {
       canDownload: true
     };
   } catch (error) {
-    const gifCandidates = await discoverPageGifs(parsedUrl.href).catch(() => []);
+    const gifCandidates = includeGifs ? await discoverPageGifs(parsedUrl.href).catch(() => []) : [];
     if (gifCandidates.length) {
       const enriched = gifCandidates.map((candidate, index) => createGifProbeResult(candidate.url, index));
       return {
@@ -762,6 +768,7 @@ async function deleteRemoteDownload(target) {
 
 async function discoverBehanceVideos(pageUrl, options = {}) {
   const includeEmbedded = options.includeEmbedded !== false;
+  const includeGifs = options.includeGifs === true;
   const response = await fetch(pageUrl, {
     headers: {
       "User-Agent": "Mozilla/5.0 ReferenceClipper/0.1",
@@ -788,8 +795,10 @@ async function discoverBehanceVideos(pageUrl, options = {}) {
   for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.(?:mp4|webm|mov)(?:\?[^"'<> ]*)?/gi)) {
     addVideoCandidate(candidates, match[0], "Direct video");
   }
-  for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.gif(?:\?[^"'<> ]*)?/gi)) {
-    addGifCandidate(candidates, match[0]);
+  if (includeGifs) {
+    for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.gif(?:\?[^"'<> ]*)?/gi)) {
+      addGifCandidate(candidates, match[0]);
+    }
   }
   if (includeEmbedded) {
     addBehanceEmbeddedCandidates(html, candidates);
