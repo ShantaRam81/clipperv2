@@ -49,6 +49,7 @@ let sourceDuration = 30;
 let selectedSourceUrl = "";
 let selectedPreviewUrl = "";
 let selectedPreviewKind = "";
+let selectedMediaType = "video";
 let probeTimer = 0;
 let probeToken = 0;
 let activeDrag = null;
@@ -102,6 +103,7 @@ function bindEvents() {
     selectedSourceUrl = "";
     selectedPreviewUrl = "";
     selectedPreviewKind = "";
+    selectedMediaType = "video";
     showingAllOptions = false;
     currentOptions = [];
     videoOptionsEl.hidden = true;
@@ -260,7 +262,7 @@ async function saveClip(event) {
   setSaveBusy(true);
 
   try {
-    const fileName = suggestedFileName(titleInput.value, selectedTags);
+    const fileName = suggestedFileName(titleInput.value, selectedTags, selectedMediaType === "gif" ? "gif" : "mp4");
     rememberSelectedTags();
     const fileHandle = await chooseSaveFileHandle(fileName);
     if (fileHandle === null) return;
@@ -271,11 +273,12 @@ async function saveClip(event) {
       body: JSON.stringify({
         url: urlInput.value,
         sourceUrl: selectedSourceUrl || urlInput.value,
-        title: fileName.replace(/\.mp4$/i, ""),
+        title: fileName.replace(/\.(?:mp4|gif)$/i, ""),
         start: startInput.value,
         end: endInput.value,
         quality: qualityInput.value,
-        includeAudio: soundEnabledInput?.checked !== false
+        includeAudio: soundEnabledInput?.checked !== false,
+        mediaType: selectedMediaType
       })
     });
     await saveFileToDevice(clip.downloadUrl || clip.href, fileName, fileHandle);
@@ -307,8 +310,10 @@ function renderVideoOptions(options) {
       </div>
     `;
     item.querySelector("img").src = option.thumbnail || inlinePlaceholder();
-    item.querySelector("strong").textContent = option.title || `Видео ${index + 1}`;
-    item.querySelector("span").textContent = `${option.provider} · ${formatTime(option.duration || 30)}`;
+    item.querySelector("strong").textContent = option.title || `${option.mediaType === "gif" ? "GIF" : "Видео"} ${index + 1}`;
+    item.querySelector("span").textContent = option.mediaType === "gif"
+      ? "GIF"
+      : `${option.provider} · ${formatTime(option.duration || 30)}`;
     item.addEventListener("click", () => {
       for (const sibling of videoOptionsEl.querySelectorAll(".video-option")) {
         sibling.classList.remove("active");
@@ -355,6 +360,7 @@ function renderVideoOptions(options) {
 
 async function applySource(data) {
   selectedSourceUrl = data.url || urlInput.value;
+  selectedMediaType = data.mediaType === "gif" || isGifUrl(selectedSourceUrl) ? "gif" : "video";
   selectedPreviewUrl = data.previewUrl || directVideoUrl(selectedSourceUrl);
   selectedPreviewKind = data.previewKind || inferPreviewKind(selectedPreviewUrl);
   sourceDuration = Math.max(1, Number(data.duration || 30));
@@ -364,13 +370,17 @@ async function applySource(data) {
   endRange.value = Math.min(5, sourceDuration);
   titleInput.value = titleInput.value || data.title || "";
   sourceTitleEl.textContent = data.title || data.provider || "Источник";
-  sourceMetaEl.textContent = `${data.provider} · ${formatTime(sourceDuration)}`;
+  sourceMetaEl.textContent = selectedMediaType === "gif" ? "GIF" : `${data.provider} · ${formatTime(sourceDuration)}`;
   thumbnailEl.src = data.thumbnail || inlinePlaceholder();
   heroImageEl.src = data.thumbnail || inlinePlaceholder();
   renderFilmFrames(data.thumbnail || inlinePlaceholder());
   currentFilmstripUrl = selectedSourceUrl;
-  await buildInitialFilmstrip(selectedSourceUrl, sourceDuration, selectedPreviewUrl);
-  resetPreviewVideo();
+  if (selectedMediaType === "gif") {
+    resetPreviewVideo();
+  } else {
+    await buildInitialFilmstrip(selectedSourceUrl, sourceDuration, selectedPreviewUrl);
+    resetPreviewVideo();
+  }
   previewEl.hidden = false;
   syncRange("range");
 }
@@ -642,6 +652,12 @@ async function playSelectedPreview() {
     setMessage("Сначала вставьте ссылку и выберите видео.");
     return;
   }
+  if (selectedMediaType === "gif") {
+    heroImageEl.src = selectedSourceUrl;
+    previewVideoEl.hidden = true;
+    setMessage("GIF уже отображается в предпросмотре.");
+    return;
+  }
 
   const previewUrl = await getPreviewSource();
   if (!previewUrl) return;
@@ -761,6 +777,10 @@ function teardownPreviewPlayer() {
 
 function directVideoUrl(url) {
   return /^https?:\/\/.+\.(mp4|webm|mov)(\?|$)/i.test(url) ? url : "";
+}
+
+function isGifUrl(url) {
+  return /^https?:\/\/.+\.gif(\?|$)/i.test(url);
 }
 
 function inferPreviewKind(url) {
@@ -900,12 +920,13 @@ function renderHashtagOptions() {
 async function chooseSaveFileHandle(fileName) {
   if (!("showSaveFilePicker" in window)) return undefined;
   setMessage("Выберите папку и имя файла...");
+  const isGif = /\.gif$/i.test(fileName || "");
   try {
     return await window.showSaveFilePicker({
       suggestedName: fileName || "reference-clip.mp4",
       types: [{
-        description: "MP4 video",
-        accept: { "video/mp4": [".mp4"] }
+        description: isGif ? "GIF image" : "MP4 video",
+        accept: isGif ? { "image/gif": [".gif"] } : { "video/mp4": [".mp4"] }
       }]
     });
   } catch (error) {
@@ -954,10 +975,10 @@ function triggerDownload(url, fileName) {
   link.remove();
 }
 
-function suggestedFileName(title, tags = []) {
+function suggestedFileName(title, tags = [], extension = "mp4") {
   const tagPrefix = tags.map(slugFilePart).filter(Boolean).join("_");
   const clean = slugFilePart(title || "reference-clip");
-  return `${tagPrefix ? `${tagPrefix}__` : ""}${clean || "reference-clip"}.mp4`;
+  return `${tagPrefix ? `${tagPrefix}__` : ""}${clean || "reference-clip"}.${extension}`;
 }
 
 function slugFilePart(value) {

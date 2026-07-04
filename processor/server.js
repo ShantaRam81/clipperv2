@@ -16,6 +16,7 @@ const clipTtlMs = Number(process.env.CLIP_TTL_MINUTES || 60) * 60 * 1000;
 const mimeTypes = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
+  ".gif": "image/gif",
   ".json": "application/json; charset=utf-8"
 };
 
@@ -87,54 +88,77 @@ async function probeSource(sourceUrl, options = {}) {
   const provider = detectProvider(parsedUrl.href);
   const includeEmbedded = options.includeEmbedded !== false;
 
+  if (isGif(parsedUrl.href)) {
+    return createGifProbeResult(parsedUrl.href, 0);
+  }
+
   if (provider === "Behance") {
     const candidates = await discoverBehanceVideos(parsedUrl.href, { includeEmbedded });
     if (!candidates.length) {
-      throw statusError("В этом Behance-кейсе не найдено поддерживаемое видео.", 404);
+      throw statusError("В этом Behance-кейсе не найдено поддерживаемое видео или GIF.", 404);
     }
     const enriched = await enrichVideoOptions(candidates);
     return {
       ...enriched[0],
       options: enriched,
       pageUrl: parsedUrl.href,
-      message: `Найдено видео в кейсе: ${enriched.length}. Выберите нужный ролик.`
+      message: `Найдено медиа в кейсе: ${enriched.length}. Выберите нужный файл.`
     };
   }
 
-  const info = await getYtdlpInfo(parsedUrl.href);
-  const preview = getPreviewSource(info);
-  return {
-    url: parsedUrl.href,
-    previewUrl: preview.url,
-    previewKind: preview.kind,
-    provider,
-    title: info.title || "",
-    duration: Number(info.duration || 30),
-    thumbnail: info.thumbnail || "",
-    canDownload: true
-  };
+  try {
+    const info = await getYtdlpInfo(parsedUrl.href);
+    const preview = getPreviewSource(info);
+    return {
+      url: parsedUrl.href,
+      previewUrl: preview.url,
+      previewKind: preview.kind,
+      provider,
+      title: info.title || "",
+      duration: Number(info.duration || 30),
+      thumbnail: info.thumbnail || "",
+      canDownload: true
+    };
+  } catch (error) {
+    const gifCandidates = await discoverPageGifs(parsedUrl.href).catch(() => []);
+    if (gifCandidates.length) {
+      const enriched = gifCandidates.map((candidate, index) => createGifProbeResult(candidate.url, index));
+      return {
+        ...enriched[0],
+        options: enriched,
+        pageUrl: parsedUrl.href,
+        message: `Найдено GIF на странице: ${enriched.length}. Выберите нужный файл.`
+      };
+    }
+    throw error;
+  }
 }
 
 async function createClip(input) {
   const sourceUrl = validateUrl(input.sourceUrl || input.url);
   const title = sanitizeTitle(input.title || "Untitled reference");
+  const isGifSource = isGif(sourceUrl.href) || input.mediaType === "gif";
   const start = parseTime(input.start);
   const end = parseTime(input.end);
-  const duration = Math.max(0, end - start);
+  const duration = isGifSource ? 0 : Math.max(0, end - start);
   const quality = normalizeQuality(input.quality);
   const includeAudio = input.includeAudio !== false;
 
-  if (duration <= 0) throw statusError("Конец фрагмента должен быть позже начала.", 400);
-  if (duration > 60) throw statusError("Фрагмент должен быть до 60 секунд.", 400);
+  if (!isGifSource && duration <= 0) throw statusError("Конец фрагмента должен быть позже начала.", 400);
+  if (!isGifSource && duration > 60) throw statusError("Фрагмент должен быть до 60 секунд.", 400);
 
   const id = randomUUID();
-  const outputName = `${safeFileName(title)}-${id.slice(0, 8)}.mp4`;
+  const outputName = `${safeFileName(title)}-${id.slice(0, 8)}.${isGifSource ? "gif" : "mp4"}`;
   const outputPath = join(clipsDir, outputName);
 
   try {
-    const mediaFiles = await resolveMediaFiles(sourceUrl.href, quality);
-    await cutMedia(mediaFiles, start, duration, outputPath, quality, includeAudio);
-    await assertVideoFile(outputPath);
+    if (isGifSource) {
+      await downloadGifFile(sourceUrl.href, outputPath);
+    } else {
+      const mediaFiles = await resolveMediaFiles(sourceUrl.href, quality);
+      await cutMedia(mediaFiles, start, duration, outputPath, quality, includeAudio);
+      await assertVideoFile(outputPath);
+    }
   } catch (error) {
     await unlink(outputPath).catch(() => {});
     throw error;
@@ -145,6 +169,7 @@ async function createClip(input) {
     title,
     outputName,
     includeAudio,
+    mediaType: isGifSource ? "gif" : "video",
     href: `${publicBaseUrl}/clips/${encodeURIComponent(outputName)}`,
     publicUrl: `${publicBaseUrl}/clips/${encodeURIComponent(outputName)}`,
     createdAt: new Date().toISOString()
@@ -200,10 +225,32 @@ async function discoverBehanceVideos(pageUrl, options = {}) {
   for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.(?:mp4|webm|mov)(?:\?[^"'<> ]*)?/gi)) {
     addVideoCandidate(candidates, match[0], "Direct video");
   }
+  for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.gif(?:\?[^"'<> ]*)?/gi)) {
+    addGifCandidate(candidates, match[0]);
+  }
   if (includeEmbedded) {
     addBehanceEmbeddedCandidates(html, candidates);
   }
-  return [...candidates.values()].filter((candidate) => !isGif(candidate.url));
+  return [...candidates.values()];
+}
+
+async function discoverPageGifs(pageUrl) {
+  const response = await fetch(pageUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 ReferenceClipper/1.0",
+      "Accept": "text/html,application/xhtml+xml"
+    }
+  });
+  if (!response.ok) return [];
+  const html = decodeHtmlEntities((await response.text()).replace(/\\\//g, "/").replace(/\\u002F/g, "/"));
+  const candidates = new Map();
+  for (const match of html.matchAll(/https?:\/\/[^"'<> ]+\.gif(?:\?[^"'<> ]*)?/gi)) {
+    addGifCandidate(candidates, match[0]);
+  }
+  for (const match of html.matchAll(/"[^"]+"\s*:\s*"([^"]+\.gif(?:\?[^"]*)?)"/gi)) {
+    addGifCandidate(candidates, match[1]);
+  }
+  return [...candidates.values()];
 }
 
 async function enrichVideoOptions(options) {
@@ -212,6 +259,10 @@ async function enrichVideoOptions(options) {
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index];
     try {
+      if (option.mediaType === "gif" || isGif(option.url)) {
+        enriched.push(createGifProbeResult(option.url, index));
+        continue;
+      }
       if (option.provider === "Adobe CCV") {
         enriched.push(await enrichAdobeCcvOption(option, index));
         continue;
@@ -347,6 +398,9 @@ function addBehanceEmbeddedCandidates(html, candidates) {
   }
   for (const match of html.matchAll(/"embedUrl"\s*:\s*"([^"]*player\.vimeo\.com\/video\/[^"]+)"/gi)) {
     addVideoCandidate(candidates, match[1], "Vimeo");
+  }
+  for (const match of html.matchAll(/"[^"]+"\s*:\s*"([^"]+\.gif(?:\?[^"]*)?)"/gi)) {
+    addGifCandidate(candidates, match[1]);
   }
 }
 
@@ -679,6 +733,58 @@ function addVideoCandidate(candidates, url, provider) {
     if (provider === "Vimeo" && current && isVimeoPlayerUrl(current.url) && !isVimeoPlayerUrl(cleanUrl)) return;
     candidates.set(key, { url: cleanUrl, provider });
   }
+}
+
+function addGifCandidate(candidates, url) {
+  const cleanUrl = url.replace(/&amp;/g, "&");
+  if (!isGif(cleanUrl)) return;
+  candidates.set(`gif:${cleanUrl}`, {
+    url: cleanUrl,
+    provider: "GIF",
+    mediaType: "gif"
+  });
+}
+
+function createGifProbeResult(url, index = 0) {
+  return {
+    id: `gif-${index}`,
+    url,
+    previewUrl: url,
+    previewKind: "image",
+    provider: "GIF",
+    title: gifTitleFromUrl(url, index),
+    duration: 1,
+    thumbnail: url,
+    canDownload: true,
+    mediaType: "gif"
+  };
+}
+
+function gifTitleFromUrl(url, index = 0) {
+  try {
+    const pathname = new URL(url).pathname;
+    const name = decodeURIComponent(pathname.split("/").pop() || "");
+    return name.replace(/\.gif$/i, "") || `GIF ${index + 1}`;
+  } catch {
+    return `GIF ${index + 1}`;
+  }
+}
+
+async function downloadGifFile(sourceUrl, outputPath) {
+  const response = await fetch(sourceUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 ReferenceClipper/1.0",
+      "Accept": "image/gif,image/*,*/*"
+    }
+  });
+  if (!response.ok) {
+    throw statusError(`Не удалось скачать GIF: статус ${response.status}.`, 502);
+  }
+  const data = Buffer.from(await response.arrayBuffer());
+  if (!data.length) {
+    throw statusError("GIF скачался пустым файлом.", 502);
+  }
+  await writeFile(outputPath, data);
 }
 
 function getVideoCandidateKey(url, provider) {
